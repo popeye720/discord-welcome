@@ -4,8 +4,9 @@ from discord.ext import commands
 import asyncio
 
 intents = discord.Intents.default()
-intents.message_content = True   # REQUIRED
+intents.message_content = True
 intents.guilds = True
+intents.members = True   # 🔥 REQUIRED FOR on_member_join
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 

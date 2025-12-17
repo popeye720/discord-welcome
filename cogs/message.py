@@ -35,19 +35,27 @@ class MessageImager(commands.Cog):
                 pass
             return
 
+        # ---- FLAG CHECK ----
+        ping_everyone = False
+        if text.startswith("--ping"):
+            ping_everyone = True
+            text = text.replace("--ping", "", 1).strip()
+
+        if not text:
+            return await ctx.send("❌ Message empty hai.")
+
         embed = discord.Embed(
             description=text,
             color=discord.Color.blue()
         )
 
-        # IMPORTANT: allow mentions only if user typed them
         await channel.send(
-            content=text,
+            content="@everyone" if ping_everyone else None,
             embed=embed,
             allowed_mentions=discord.AllowedMentions(
-                everyone=True,
-                roles=True,
-                users=True
+                everyone=ping_everyone,
+                roles=False,
+                users=False
             )
         )
 

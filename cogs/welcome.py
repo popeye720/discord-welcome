@@ -18,13 +18,15 @@ class Welcome(commands.Cog):
         if not channel:
             return
 
+        rules_channel = "<#1164407773174439986>"
+        chat_channel = "<#1137328131024375858>"
+
         embed = discord.Embed(
-            title="👋 Welcome!",
             description=(
                 f"{member.mention}, **Meet your new home! ❤️**\n\n"
                 f"**MAKE SURE TO CHECK OUT:**\n"
-                f"- <#1164407773174439986>\n"
-                f"- <#1137328131024375858>\n"
+                f"- {rules_channel} → *Server Rules.*\n"
+                f"- {chat_channel} → *Start chatting from here.*\n"
             ),
             color=discord.Color.green()
         )

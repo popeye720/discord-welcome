@@ -2,7 +2,11 @@ import os
 import discord
 from discord.ext import commands
 
-WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL"))
+WELCOME_CHANNEL = os.getenv("WELCOME_CHANNEL")
+if not WELCOME_CHANNEL:
+    raise RuntimeError("WELCOME_CHANNEL env variable not set")
+
+WELCOME_CHANNEL_ID = int(WELCOME_CHANNEL)
 
 class Welcome(commands.Cog):
     def __init__(self, bot):
@@ -14,16 +18,13 @@ class Welcome(commands.Cog):
         if not channel:
             return
 
-        rules_channel = "<#1164407773174439986>"
-        chat_channel = "<#1137328131024375858>"
-
         embed = discord.Embed(
             title="👋 Welcome!",
             description=(
                 f"{member.mention}, **Meet your new home! ❤️**\n\n"
                 f"**MAKE SURE TO CHECK OUT:**\n"
-                f"- {rules_channel} → *Server Rules.*\n"
-                f"- {chat_channel} → *Start chatting from here.*\n"
+                f"- <#1164407773174439986>\n"
+                f"- <#1137328131024375858>\n"
             ),
             color=discord.Color.green()
         )

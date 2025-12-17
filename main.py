@@ -19,6 +19,7 @@ async def on_ready():
 async def main():
     await bot.load_extension("cogs.welcome")
     await bot.load_extension("cogs.message")
+    await bot.load_extension("cogs.youtube")
     await bot.start(TOKEN)
 
 asyncio.run(main())

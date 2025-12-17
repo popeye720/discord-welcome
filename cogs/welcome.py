@@ -24,8 +24,8 @@ class Welcome(commands.Cog):
         embed = discord.Embed(
             description=(
                 "**MAKE SURE TO CHECK OUT:**\n"
-                "⁠📜・rules → Server Rules.\n"
-                "⁠💬・chat → Start chatting from here."
+                f"📜・{rules_channel} → *Server Rules.*\n"
+                f"💬・{chat_channel} → *Start chatting from here.*"
             ),
             color=discord.Color.green()
         )
@@ -35,7 +35,7 @@ class Welcome(commands.Cog):
             url="https://cdn.discordapp.com/attachments/1138497010345979944/1439314780681801829/dc.png"
         )
 
-        # 👇 mention OUTSIDE embed (proper tag)
+        # 👇 mention bahar, taaki proper tag ho
         await channel.send(
             content=f"{member.mention}, **Meet your new home! ❤️**",
             embed=embed

@@ -26,6 +26,11 @@ class Safety(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        # 🔥 IMPORTANT: COMMANDS KO SAFETY SE BAHAR RAKHO
+        if message.content.startswith("!"):
+            await self.bot.process_commands(message)
+            return
+
         key = (message.guild.id, message.channel.id, message.author.id)
         now = time.time()
 
@@ -35,25 +40,24 @@ class Safety(commands.Cog):
                 await message.delete()
             except:
                 pass
+            return
 
         # ===== STORE MESSAGE =====
         msgs = self.user_messages.get(key, [])
         msgs.append((now, message))
 
-        # keep only recent window messages
+        # keep only messages in time window
         msgs = [(t, m) for t, m in msgs if now - t <= self.TIME_WINDOW]
         self.user_messages[key] = msgs
 
         # ===== SPAM TRIGGER =====
         if len(msgs) >= self.MESSAGE_LIMIT:
             try:
-                # timeout user
                 await message.author.timeout(
                     timedelta(seconds=self.TIMEOUT_SECONDS),
                     reason="Spam detected"
                 )
 
-                # delete spam messages in this channel
                 for _, msg in msgs:
                     try:
                         await msg.delete()
@@ -78,11 +82,8 @@ class Safety(commands.Cog):
             except:
                 pass
 
-            # reset only this channel-user combo
             self.user_messages.pop(key, None)
             return
-
-        await self.bot.process_commands(message)
 
 async def setup(bot):
     await bot.add_cog(Safety(bot))

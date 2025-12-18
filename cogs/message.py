@@ -6,33 +6,21 @@ import os
 class MessageImager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.owner_id = int(os.getenv("OWNER_ID"))
 
     @commands.command()
+    @commands.is_owner()  # 🔥 CLEAN OWNER CHECK
     async def post(self, ctx, channel_id: int, *, text: str):
-        # Owner check
-        if ctx.author.id != self.owner_id:
-            warning = await ctx.send("❌ Only the bot owner can use this command!")
-            await asyncio.sleep(2)
-            try:
-                await ctx.message.delete()
-                await warning.delete()
-            except:
-                pass
-            return
-
         if not text.strip():
-            return await ctx.send("❌ Message empty hai.")
+            msg = await ctx.send("❌ Message empty hai.")
+            await asyncio.sleep(2)
+            await msg.delete()
+            return
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
             msg = await ctx.send("❌ Invalid channel ID!")
             await asyncio.sleep(2)
-            try:
-                await ctx.message.delete()
-                await msg.delete()
-            except:
-                pass
+            await msg.delete()
             return
 
         # ---- FLAG CHECK ----
@@ -42,7 +30,10 @@ class MessageImager(commands.Cog):
             text = text.replace("--ping", "", 1).strip()
 
         if not text:
-            return await ctx.send("❌ Message empty hai.")
+            msg = await ctx.send("❌ Message empty hai.")
+            await asyncio.sleep(2)
+            await msg.delete()
+            return
 
         embed = discord.Embed(
             description=text,
@@ -59,7 +50,22 @@ class MessageImager(commands.Cog):
             )
         )
 
-        await ctx.send(f"✅ Message sent to <#{channel_id}>")
+        confirm = await ctx.send(f"✅ Message sent to <#{channel_id}>")
+        await asyncio.sleep(2)
+        await confirm.delete()
+        await ctx.message.delete()
+
+    # ❌ OWNER ERROR HANDLER (silent + auto delete)
+    @post.error
+    async def post_error(self, ctx, error):
+        if isinstance(error, commands.NotOwner):
+            msg = await ctx.send("❌ Only the bot owner can use this command!")
+            await asyncio.sleep(2)
+            try:
+                await msg.delete()
+                await ctx.message.delete()
+            except:
+                pass
 
 async def setup(bot):
     await bot.add_cog(MessageImager(bot))

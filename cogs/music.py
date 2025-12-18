@@ -3,7 +3,7 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 
-# ---- YT-DLP OPTIONS (Android client to avoid JS warnings) ----
+# ===== YT-DLP OPTIONS (IOS CLIENT - MOST STABLE) =====
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "quiet": True,
@@ -11,7 +11,7 @@ YTDL_OPTIONS = {
     "noplaylist": True,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android"],
+            "player_client": ["ios"],
             "skip": ["dash", "hls"]
         }
     }
@@ -36,7 +36,7 @@ class Music(commands.Cog):
     async def play_next(self, ctx):
         vc = ctx.voice_client
 
-        # ---- AUTO LEAVE WHEN QUEUE EMPTY ----
+        # ===== AUTO LEAVE WHEN QUEUE EMPTY =====
         if not self.queue:
             await asyncio.sleep(self.AUTO_LEAVE_DELAY)
             if vc and not vc.is_playing():
@@ -50,12 +50,14 @@ class Music(commands.Cog):
         vc.play(
             discord.PCMVolumeTransformer(
                 discord.FFmpegPCMAudio(source["url"], **FFMPEG_OPTIONS),
-                volume=self.volume,
+                volume=self.volume
             ),
             after=lambda e: asyncio.run_coroutine_threadsafe(
                 self.play_next(ctx), self.bot.loop
-            ),
+            )
         )
+
+    # ===== COMMANDS =====
 
     @commands.command()
     async def join(self, ctx):
@@ -79,7 +81,7 @@ class Music(commands.Cog):
             "url": data["url"]
         })
 
-        await ctx.send(f"▶️ **Added:** {data['title']}")
+        await ctx.send(f"🎶 **Added:** {data['title']}")
 
         if not ctx.voice_client.is_playing():
             await self.play_next(ctx)

@@ -7,11 +7,13 @@ import asyncio
 class Safety(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+        # user_id : list of (timestamp, message)
         self.user_messages = {}
 
         self.MESSAGE_LIMIT = 5
         self.TIME_WINDOW = 6
-        self.TIMEOUT_SECONDS = 60
+        self.TIMEOUT_SECONDS = 120
 
         self.LINK_KEYWORDS = [
             "http://",
@@ -25,35 +27,41 @@ class Safety(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
+        user_id = message.author.id
+        now = time.time()
+
         # ===== LINK DETECTION =====
-        content_lower = message.content.lower()
-        if any(link in content_lower for link in self.LINK_KEYWORDS):
+        if any(link in message.content.lower() for link in self.LINK_KEYWORDS):
             try:
                 await message.delete()
             except:
                 pass
 
-        # ===== SPAM DETECTION =====
-        user_id = message.author.id
-        now = time.time()
+        # ===== STORE MESSAGE FOR SPAM CHECK =====
+        msgs = self.user_messages.get(user_id, [])
+        msgs.append((now, message))
 
-        timestamps = self.user_messages.get(user_id, [])
-        timestamps.append(now)
+        # keep only recent messages
+        msgs = [(t, m) for t, m in msgs if now - t <= self.TIME_WINDOW]
+        self.user_messages[user_id] = msgs
 
-        timestamps = [t for t in timestamps if now - t <= self.TIME_WINDOW]
-        self.user_messages[user_id] = timestamps
-
-        if len(timestamps) >= self.MESSAGE_LIMIT:
+        # ===== SPAM TRIGGER =====
+        if len(msgs) >= self.MESSAGE_LIMIT:
             try:
-                await message.delete()
-
                 # timeout user
                 await message.author.timeout(
                     timedelta(seconds=self.TIMEOUT_SECONDS),
                     reason="Spam detected"
                 )
 
-                # ===== CHAT WARNING (AUTO DELETE) =====
+                # delete all spam messages (recent only)
+                for _, msg in msgs:
+                    try:
+                        await msg.delete()
+                    except:
+                        pass
+
+                # warning in same channel
                 embed = discord.Embed(
                     description=(
                         "⚠️ **Spam Detected**\n\n"
@@ -64,13 +72,14 @@ class Safety(commands.Cog):
                     color=discord.Color.red()
                 )
 
-                warn_msg = await message.channel.send(embed=embed)
+                warn = await message.channel.send(embed=embed)
                 await asyncio.sleep(6)
-                await warn_msg.delete()
+                await warn.delete()
 
             except:
                 pass
 
+            # reset stored messages
             self.user_messages[user_id] = []
             return
 

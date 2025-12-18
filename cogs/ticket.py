@@ -10,10 +10,7 @@ class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="🔒 Close Ticket",
-        style=discord.ButtonStyle.secondary  # YELLOW / GREY
-    )
+    @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.secondary)
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.channel
         guild = interaction.guild
@@ -25,7 +22,6 @@ class CloseTicketView(discord.ui.View):
                 ephemeral=True
             )
 
-        # permission check
         is_owner = user == guild.owner
         is_admin = user.guild_permissions.administrator
         is_ticket_owner = channel.name == f"ticket-{user.id}"
@@ -39,7 +35,6 @@ class CloseTicketView(discord.ui.View):
         await interaction.response.send_message("🔒 Closing ticket...", ephemeral=True)
         await channel.delete(reason="Ticket closed")
 
-
 # ===================== CREATE BUTTON VIEW =====================
 
 class TicketButton(discord.ui.View):
@@ -48,20 +43,16 @@ class TicketButton(discord.ui.View):
         self.bot = bot
 
     @discord.ui.button(label="🎫 Create Ticket", style=discord.ButtonStyle.green)
-    async def create_ticket(
-        self,
-        interaction: discord.Interaction,
-        button: discord.ui.Button
-    ):
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
 
-        # check if user already has open ticket
         for channel in guild.text_channels:
             if channel.name == f"ticket-{user.id}":
                 return await interaction.response.send_message(
                     "❌ You already have an open ticket.",
-                    ephemeral=True
+                    ephemeral=True,
+                    delete_after=5
                 )
 
         overwrites = {
@@ -76,7 +67,6 @@ class TicketButton(discord.ui.View):
             reason="New ticket created"
         )
 
-        # ---- EMBED (NO MENTION INSIDE) ----
         embed = discord.Embed(
             description=(
                 "Welcome to your ticket 👋\n\n"
@@ -87,20 +77,17 @@ class TicketButton(discord.ui.View):
             color=discord.Color.blue()
         )
 
-        # ---- USER MENTION OUTSIDE EMBED (NOTIFICATION) ----
         await ticket_channel.send(
             content=f"{user.mention}",
             embed=embed,
             view=CloseTicketView()
         )
 
-        # ✅ AUTO DELETE CONFIRMATION (FIX)
         await interaction.response.send_message(
             f"✅ Ticket created: {ticket_channel.mention}",
             ephemeral=True,
             delete_after=5
         )
-
 
 # ===================== COG =====================
 
@@ -124,7 +111,6 @@ class Ticket(commands.Cog):
         )
 
         await channel.send(embed=embed, view=TicketButton(self.bot))
-
 
 async def setup(bot):
     await bot.add_cog(Ticket(bot))

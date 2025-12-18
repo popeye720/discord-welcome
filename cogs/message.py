@@ -1,7 +1,6 @@
 import discord
 from discord.ext import commands
 import asyncio
-import os
 
 class MessageImager(commands.Cog):
     def __init__(self, bot):
@@ -53,19 +52,33 @@ class MessageImager(commands.Cog):
         confirm = await ctx.send(f"✅ Message sent to <#{channel_id}>")
         await asyncio.sleep(2)
         await confirm.delete()
-        await ctx.message.delete()
 
-    # ❌ OWNER ERROR HANDLER (silent + auto delete)
+        # delete command message safely
+        try:
+            await ctx.message.delete()
+        except:
+            pass
+
+    # ================= ERROR HANDLER =================
+
     @post.error
     async def post_error(self, ctx, error):
+        # 🔒 HARD GUARD: one warning per execution
+        if getattr(ctx, "_owner_warned", False):
+            return
+
         if isinstance(error, commands.NotOwner):
-            msg = await ctx.send("❌ Only the bot owner can use this command!")
-            await asyncio.sleep(2)
+            ctx._owner_warned = True
+
             try:
+                msg = await ctx.send("❌ Only the bot owner can use this command!")
+                await asyncio.sleep(2)
                 await msg.delete()
                 await ctx.message.delete()
             except:
                 pass
+
+# ================= SETUP =================
 
 async def setup(bot):
     await bot.add_cog(MessageImager(bot))

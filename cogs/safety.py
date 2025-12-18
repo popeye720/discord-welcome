@@ -10,8 +10,8 @@ class Safety(commands.Cog):
         # (guild_id, channel_id, user_id) -> list of (timestamp, message)
         self.user_messages = {}
 
-        self.MESSAGE_LIMIT = 5      # kitne messages
-        self.TIME_WINDOW = 6        # kitne seconds me
+        self.MESSAGE_LIMIT = 3     # kitne messages
+        self.TIME_WINDOW = 2     # kitne seconds me
         self.TIMEOUT_SECONDS = 120  # timeout duration
 
     @commands.Cog.listener()

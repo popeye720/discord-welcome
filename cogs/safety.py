@@ -2,13 +2,12 @@ import discord
 from discord.ext import commands
 import time
 from datetime import timedelta
-import asyncio
 
 class Safety(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-        # user_id : list of (timestamp, message)
+        # (guild_id, channel_id, user_id) : list of (timestamp, message)
         self.user_messages = {}
 
         self.MESSAGE_LIMIT = 5
@@ -27,7 +26,7 @@ class Safety(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        user_id = message.author.id
+        key = (message.guild.id, message.channel.id, message.author.id)
         now = time.time()
 
         # ===== LINK DETECTION =====
@@ -37,13 +36,13 @@ class Safety(commands.Cog):
             except:
                 pass
 
-        # ===== STORE MESSAGE FOR SPAM CHECK =====
-        msgs = self.user_messages.get(user_id, [])
+        # ===== STORE MESSAGE =====
+        msgs = self.user_messages.get(key, [])
         msgs.append((now, message))
 
-        # keep only recent messages
+        # keep only recent window messages
         msgs = [(t, m) for t, m in msgs if now - t <= self.TIME_WINDOW]
-        self.user_messages[user_id] = msgs
+        self.user_messages[key] = msgs
 
         # ===== SPAM TRIGGER =====
         if len(msgs) >= self.MESSAGE_LIMIT:
@@ -54,33 +53,33 @@ class Safety(commands.Cog):
                     reason="Spam detected"
                 )
 
-                # delete all spam messages (recent only)
+                # delete spam messages in this channel
                 for _, msg in msgs:
                     try:
                         await msg.delete()
                     except:
                         pass
 
-                # warning in same channel
-                embed = discord.Embed(
-                    description=(
-                        "⚠️ **Spam Detected**\n\n"
-                        f"{message.author.mention}, you were sending messages too fast.\n\n"
-                        f"⏳ **Timeout:** {self.TIMEOUT_SECONDS} seconds\n"
-                        "Please slow down."
-                    ),
-                    color=discord.Color.red()
-                )
-
-                warn = await message.channel.send(embed=embed)
-                await asyncio.sleep(6)
-                await warn.delete()
+                # ===== DM WARNING =====
+                try:
+                    embed = discord.Embed(
+                        description=(
+                            "⚠️ **Spam Detected**\n\n"
+                            f"You were sending messages too fast in **{message.guild.name}**.\n\n"
+                            f"⏳ **Timeout:** {self.TIMEOUT_SECONDS} seconds\n\n"
+                            "Please slow down and follow the rules."
+                        ),
+                        color=discord.Color.red()
+                    )
+                    await message.author.send(embed=embed)
+                except:
+                    pass
 
             except:
                 pass
 
-            # reset stored messages
-            self.user_messages[user_id] = []
+            # reset only this channel-user combo
+            self.user_messages.pop(key, None)
             return
 
         await self.bot.process_commands(message)

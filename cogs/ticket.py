@@ -94,9 +94,11 @@ class TicketButton(discord.ui.View):
             view=CloseTicketView()
         )
 
+        # ✅ AUTO DELETE CONFIRMATION (FIX)
         await interaction.response.send_message(
             f"✅ Ticket created: {ticket_channel.mention}",
-            ephemeral=True
+            ephemeral=True,
+            delete_after=5
         )
 
 
@@ -126,4 +128,3 @@ class Ticket(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Ticket(bot))
-#cccc

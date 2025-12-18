@@ -3,23 +3,20 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 
-# ===== YT-DLP OPTIONS (IOS CLIENT - MOST STABLE) =====
+# ===== SAFE YT-DLP OPTIONS (NO CLIENT FORCING) =====
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
     "quiet": True,
     "default_search": "ytsearch",
     "noplaylist": True,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["ios"],
-            "skip": ["dash", "hls"]
-        }
-    }
+    "nocheckcertificate": True,
+    "ignoreerrors": True,
+    "source_address": "0.0.0.0"
 }
 
 FFMPEG_OPTIONS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn",
+    "options": "-vn"
 }
 
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
@@ -31,12 +28,11 @@ class Music(commands.Cog):
         self.queue = []
         self.loop = False
         self.volume = 0.5
-        self.AUTO_LEAVE_DELAY = 10  # seconds
+        self.AUTO_LEAVE_DELAY = 10
 
     async def play_next(self, ctx):
         vc = ctx.voice_client
 
-        # ===== AUTO LEAVE WHEN QUEUE EMPTY =====
         if not self.queue:
             await asyncio.sleep(self.AUTO_LEAVE_DELAY)
             if vc and not vc.is_playing():
@@ -57,13 +53,6 @@ class Music(commands.Cog):
             )
         )
 
-    # ===== COMMANDS =====
-
-    @commands.command()
-    async def join(self, ctx):
-        if ctx.author.voice and not ctx.voice_client:
-            await ctx.author.voice.channel.connect()
-
     @commands.command()
     async def play(self, ctx, *, query: str):
         if not ctx.author.voice:
@@ -72,29 +61,33 @@ class Music(commands.Cog):
         if not ctx.voice_client:
             await ctx.author.voice.channel.connect()
 
-        data = ytdl.extract_info(query, download=False)
-        if "entries" in data:
-            data = data["entries"][0]
+        try:
+            data = ytdl.extract_info(query, download=False)
+            if "entries" in data:
+                data = data["entries"][0]
 
-        self.queue.append({
-            "title": data["title"],
-            "url": data["url"]
-        })
+            self.queue.append({
+                "title": data["title"],
+                "url": data["url"]
+            })
 
-        await ctx.send(f"🎶 **Added:** {data['title']}")
+            await ctx.send(f"🎶 **Added:** {data['title']}")
 
-        if not ctx.voice_client.is_playing():
-            await self.play_next(ctx)
+            if not ctx.voice_client.is_playing():
+                await self.play_next(ctx)
+
+        except Exception:
+            await ctx.send("❌ Song play nahi ho paya (YouTube issue)")
 
     @commands.command()
     async def pause(self, ctx):
-        if ctx.voice_client and ctx.voice_client.is_playing():
+        if ctx.voice_client:
             ctx.voice_client.pause()
             await ctx.send("⏸️ Paused")
 
     @commands.command()
     async def resume(self, ctx):
-        if ctx.voice_client and ctx.voice_client.is_paused():
+        if ctx.voice_client:
             ctx.voice_client.resume()
             await ctx.send("▶️ Resumed")
 
@@ -119,14 +112,11 @@ class Music(commands.Cog):
 
     @commands.command()
     async def vol(self, ctx, value: int):
-        if value < 1 or value > 100:
-            return await ctx.send("❌ Volume 1–100 ke beech hona chahiye")
-
-        self.volume = value / 100
-        if ctx.voice_client and ctx.voice_client.source:
-            ctx.voice_client.source.volume = self.volume
-
-        await ctx.send(f"🔊 Volume set to {value}%")
+        if 1 <= value <= 100:
+            self.volume = value / 100
+            if ctx.voice_client and ctx.voice_client.source:
+                ctx.voice_client.source.volume = self.volume
+            await ctx.send(f"🔊 Volume {value}%")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))

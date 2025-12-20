@@ -12,7 +12,7 @@ def get_owner_id():
         return 0
 
 OWNER_ID = get_owner_id()
-COOLDOWN_SECONDS = 60  # ⏱️ 1 minute
+COOLDOWN_SECONDS = 10  # ⏱️ 1 minute
 
 DATA_DIR = "data"
 TRIGGER_FILE = os.path.join(DATA_DIR, "triggers.json")

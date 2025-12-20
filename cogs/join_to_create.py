@@ -7,12 +7,12 @@ JOIN_TO_CREATE_CHANNEL_ID = int(os.getenv("JOIN_TO_CREATE_CHANNEL_ID"))
 class JoinToCreate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.temp_channels = {}  # user_id : channel_id
+        self.temp_channels = set()  # store temp VC ids
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
 
-        # User joined Join-to-Create channel
+        # 🟢 User joined Join-to-Create channel
         if after.channel and after.channel.id == JOIN_TO_CREATE_CHANNEL_ID:
             guild = member.guild
             category = after.channel.category
@@ -21,7 +21,11 @@ class JoinToCreate(commands.Cog):
 
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(connect=False),
-                member: discord.PermissionOverwrite(connect=True, manage_channels=True)
+                member: discord.PermissionOverwrite(
+                    connect=True,
+                    manage_channels=True,
+                    move_members=True
+                )
             }
 
             new_channel = await guild.create_voice_channel(
@@ -31,19 +35,14 @@ class JoinToCreate(commands.Cog):
             )
 
             await member.move_to(new_channel)
-            self.temp_channels[member.id] = new_channel.id
+            self.temp_channels.add(new_channel.id)
 
-        # User left a temp channel → delete if empty
-        if before.channel:
-            channel = before.channel
+        # 🔴 Delete empty temp channels
+        if before.channel and before.channel.id in self.temp_channels:
+            if len(before.channel.members) == 0:
+                await before.channel.delete()
+                self.temp_channels.remove(before.channel.id)
 
-            if (
-                channel.id in self.temp_channels.values()
-                and len(channel.members) == 0
-            ):
-                await channel.delete()
-
-                # cleanup dict
-                for user_id, ch_id in list(self.temp_channels.items()):
-                    if ch_id == channel.id:
-                        del self.temp_channels[user_id]
+# 🔥 REQUIRED FOR load_extension
+async def setup(bot):
+    await bot.add_cog(JoinToCreate(bot))

@@ -23,12 +23,15 @@ CHANNELS = [
 class YouTubeNotify(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+
+    # ✅ task starts only AFTER cog is loaded
+    async def cog_load(self):
         self.check_youtube.start()
 
     def cog_unload(self):
         self.check_youtube.cancel()
 
-    @tasks.loop(minutes=2) 
+    @tasks.loop(minutes=2)  # ⏱️ production-safe
     async def check_youtube(self):
         for ch in CHANNELS:
             if not ch["yt_id"]:
@@ -43,7 +46,7 @@ class YouTubeNotify(commands.Cog):
             latest = feed.entries[0]
             video_id = latest.yt_videoid
 
-            # 🟡 First run → save only (no notify)
+            # 🟡 First run → save only
             if not ch["initialized"]:
                 ch["last_video"] = video_id
                 ch["initialized"] = True
@@ -54,7 +57,7 @@ class YouTubeNotify(commands.Cog):
             if ch["last_video"] == video_id:
                 continue
 
-            # 🟢 NEW VIDEO FOUND
+            # 🟢 New video
             ch["last_video"] = video_id
 
             channel = await self.bot.fetch_channel(ch["discord_channel"])
@@ -77,5 +80,6 @@ class YouTubeNotify(commands.Cog):
     async def before_check(self):
         await self.bot.wait_until_ready()
 
+# 🔥 REQUIRED FOR load_extension
 async def setup(bot):
     await bot.add_cog(YouTubeNotify(bot))

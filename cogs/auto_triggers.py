@@ -5,7 +5,7 @@ import os
 import time
 
 # 👑 OWNER FROM ENV (Railway-safe)
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))  # 0 = no one allowed if missing
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 COOLDOWN_SECONDS = 60  # ⏱️ 1 minute
 
 DATA_DIR = "data"
@@ -46,7 +46,6 @@ class AutoTriggers(commands.Cog):
 
         content = message.content.lower().strip()
 
-        # ⏱️ cooldown per user
         now = time.time()
         last = self.cooldowns.get(message.author.id, 0)
         if now - last < COOLDOWN_SECONDS:
@@ -57,7 +56,7 @@ class AutoTriggers(commands.Cog):
             self.cooldowns[message.author.id] = now
             await message.reply(reply, mention_author=False)
 
-    # -------- OWNER ONLY COMMAND --------
+    # -------- ADD TRIGGER (OWNER ONLY) --------
     @commands.command(name="addtrigger")
     async def add_trigger(self, ctx, trigger: str, *, reply: str):
 
@@ -70,6 +69,25 @@ class AutoTriggers(commands.Cog):
         save_triggers(TRIGGERS)
 
         await ctx.reply(f"✅ Trigger `{trigger}` added & saved permanently!")
+
+    # -------- DELETE TRIGGER (OWNER ONLY) --------
+    @commands.command(name="deltrigger")
+    async def delete_trigger(self, ctx, trigger: str):
+
+        if ctx.author.id != OWNER_ID:
+            await ctx.reply("❌ You are not allowed to use this command.")
+            return
+
+        trigger = trigger.lower()
+
+        if trigger not in TRIGGERS:
+            await ctx.reply(f"⚠️ Trigger `{trigger}` does not exist.")
+            return
+
+        del TRIGGERS[trigger]
+        save_triggers(TRIGGERS)
+
+        await ctx.reply(f"🗑️ Trigger `{trigger}` deleted successfully!")
 
 # REQUIRED FOR load_extension
 async def setup(bot):

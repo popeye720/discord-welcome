@@ -19,10 +19,13 @@ class JoinToCreate(commands.Cog):
 
             channel_name = f"{member.name}'s VC"
 
+            # 🔓 PUBLIC VC (anyone can join)
             overwrites = {
-                guild.default_role: discord.PermissionOverwrite(connect=False),
-                member: discord.PermissionOverwrite(
+                guild.default_role: discord.PermissionOverwrite(
                     connect=True,
+                    speak=True
+                ),
+                member: discord.PermissionOverwrite(
                     manage_channels=True,
                     move_members=True
                 )

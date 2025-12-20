@@ -2,6 +2,48 @@ import discord
 from discord.ext import commands
 import wavelink
 
+# ================= BUTTON VIEW =================
+
+class MusicControls(discord.ui.View):
+    def __init__(self, player: wavelink.Player):
+        super().__init__(timeout=None)
+        self.player = player
+        self.loop = False
+
+    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.secondary)
+    async def pause(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.player.playing:
+            await self.player.pause()
+            await interaction.response.send_message("⏸️ Paused", ephemeral=True)
+
+    @discord.ui.button(emoji="▶️", style=discord.ButtonStyle.secondary)
+    async def resume(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.player.paused:
+            await self.player.resume()
+            await interaction.response.send_message("▶️ Resumed", ephemeral=True)
+
+    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.primary)
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.player:
+            await self.player.stop()
+            await interaction.response.send_message("⏭️ Skipped", ephemeral=True)
+
+    @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.success)
+    async def loop_track(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.loop = not self.loop
+        self.player.queue.loop = self.loop
+        state = "ON" if self.loop else "OFF"
+        await interaction.response.send_message(f"🔁 Loop **{state}**", ephemeral=True)
+
+    @discord.ui.button(emoji="⏹️", style=discord.ButtonStyle.danger)
+    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.player:
+            await self.player.disconnect()
+            await interaction.response.send_message("⏹️ Stopped & left VC", ephemeral=True)
+        self.stop()
+
+# ================= MUSIC COG =================
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -19,7 +61,6 @@ class Music(commands.Cog):
             return
 
         player: wavelink.Player = ctx.voice_client
-
         if not player:
             player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
@@ -30,33 +71,16 @@ class Music(commands.Cog):
         track = tracks[0]
         await player.play(track)
 
-        await ctx.send(f"▶️ **Playing:** {track.title}")
+        embed = discord.Embed(
+            title="🎶 Now Playing",
+            description=f"**{track.title}**",
+            color=discord.Color.green()
+        )
 
-    # ⏸️ PAUSE
-    @commands.command()
-    async def pause(self, ctx):
-        player = ctx.voice_client
-        if player and player.playing:
-            await player.pause()
-            await ctx.send("⏸️ Paused")
+        view = MusicControls(player)
+        await ctx.send(embed=embed, view=view)
 
-    # ▶️ RESUME
-    @commands.command()
-    async def resume(self, ctx):
-        player = ctx.voice_client
-        if player and player.paused:
-            await player.resume()
-            await ctx.send("▶️ Resumed")
-
-    # ⏭️ SKIP
-    @commands.command()
-    async def skip(self, ctx):
-        player = ctx.voice_client
-        if player:
-            await player.stop()
-            await ctx.send("⏭️ Skipped")
-
-    # ⏹️ STOP
+    # ⏹️ STOP COMMAND (backup)
     @commands.command()
     async def stop(self, ctx):
         player = ctx.voice_client

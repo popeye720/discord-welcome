@@ -23,6 +23,7 @@ async def main():
     await bot.load_extension("cogs.youtube")
     await bot.load_extension("cogs.ticket")
     await bot.load_extension("cogs.join_to_create")
+    await bot.load_extension("cogs.auto_triggers")
     await bot.start(TOKEN)
 
 asyncio.run(main())

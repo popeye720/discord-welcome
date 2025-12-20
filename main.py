@@ -6,7 +6,7 @@ import asyncio
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.members = True   # 🔥 REQUIRED FOR on_member_join
+intents.members = True  
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -20,7 +20,7 @@ async def main():
     await bot.load_extension("cogs.welcome")
     await bot.load_extension("cogs.message")
     await bot.load_extension("cogs.autorole")
-    #await bot.load_extension("cogs.safety")
+    await bot.load_extension("cogs.youtube")
     await bot.load_extension("cogs.ticket")
     await bot.start(TOKEN)
 

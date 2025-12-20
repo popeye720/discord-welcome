@@ -7,7 +7,7 @@ class MessageImager(commands.Cog):
         self.bot = bot
 
     @commands.command()
-    @commands.is_owner()  # 🔥 CLEAN OWNER CHECK
+    @commands.is_owner()
     async def post(self, ctx, channel_id: int, *, text: str):
         if not text.strip():
             msg = await ctx.send("❌ Message empty hai.")
@@ -39,6 +39,13 @@ class MessageImager(commands.Cog):
             color=discord.Color.blue()
         )
 
+        # 🖼️ IMAGE HANDLING (NEW)
+        if ctx.message.attachments:
+            attachment = ctx.message.attachments[0]
+
+            if attachment.content_type and attachment.content_type.startswith("image"):
+                embed.set_image(url=attachment.url)
+
         await channel.send(
             content="@everyone" if ping_everyone else None,
             embed=embed,
@@ -63,13 +70,11 @@ class MessageImager(commands.Cog):
 
     @post.error
     async def post_error(self, ctx, error):
-        # 🔒 HARD GUARD: one warning per execution
         if getattr(ctx, "_owner_warned", False):
             return
 
         if isinstance(error, commands.NotOwner):
             ctx._owner_warned = True
-
             try:
                 msg = await ctx.send("❌ Only the bot owner can use this command!")
                 await asyncio.sleep(2)

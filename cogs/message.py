@@ -25,10 +25,6 @@ class MessageImager(commands.Cog):
             ping_everyone = True
             text = text.replace("--ping", "", 1).strip()
 
-        if not text:
-            await ctx.send("❌ Message empty hai.")
-            return
-
         embed = discord.Embed(description=text, color=discord.Color.blue())
 
         files = []
@@ -50,16 +46,17 @@ class MessageImager(commands.Cog):
             )
         )
 
-        await ctx.send(f"✅ Message sent | ID: `{msg.id}`")
+        await ctx.send(f"✅ Message sent | Channel: {channel.mention} | ID: `{msg.id}`")
 
-    # ================= POST EDIT =================
+    # ================= POST EDIT (FIXED) =================
 
     @commands.command()
     @commands.is_owner()
-    async def postedit(self, ctx, message_id: int, *, new_text: str):
+    async def postedit(self, ctx, channel_id: int, message_id: int, *, new_text: str):
 
-        if not new_text.strip():
-            await ctx.send("❌ Edit text empty hai.")
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            await ctx.send("❌ Invalid channel ID!")
             return
 
         ping_everyone = False
@@ -71,18 +68,14 @@ class MessageImager(commands.Cog):
             await ctx.send("❌ Edit text empty hai.")
             return
 
-        # 🔍 Find message in all text channels
-        target_message = None
-        for channel in ctx.guild.text_channels:
-            try:
-                msg = await channel.fetch_message(message_id)
-                target_message = msg
-                break
-            except:
-                continue
+        try:
+            target_message = await channel.fetch_message(message_id)
+        except:
+            await ctx.send("❌ Message not found in that channel.")
+            return
 
-        if not target_message:
-            await ctx.send("❌ Message not found in this server.")
+        if target_message.author.id != self.bot.user.id:
+            await ctx.send("❌ I can only edit my own messages.")
             return
 
         embed = target_message.embeds[0] if target_message.embeds else discord.Embed()
@@ -90,8 +83,6 @@ class MessageImager(commands.Cog):
         embed.color = discord.Color.blue()
 
         files = []
-
-        # 🖼️ Image update (optional)
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image"):
@@ -102,7 +93,7 @@ class MessageImager(commands.Cog):
         await target_message.edit(
             content="@everyone" if ping_everyone else None,
             embed=embed,
-            attachments=[],  # remove old attachments
+            attachments=[],
             files=files if files else None,
             allowed_mentions=discord.AllowedMentions(
                 everyone=ping_everyone,
@@ -113,15 +104,13 @@ class MessageImager(commands.Cog):
 
         await ctx.send(f"✅ Message `{message_id}` edited successfully!")
 
-    # ================= ERROR HANDLER =================
+    # ================= ERROR =================
 
     @post.error
     @postedit.error
     async def owner_only_error(self, ctx, error):
         if isinstance(error, commands.NotOwner):
             await ctx.send("❌ Only the bot owner can use this command!")
-
-# ================= SETUP =================
 
 async def setup(bot):
     await bot.add_cog(MessageImager(bot))

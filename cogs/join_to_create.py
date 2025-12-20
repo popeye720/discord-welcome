@@ -9,6 +9,8 @@ class JoinToCreate(commands.Cog):
         self.bot = bot
         self.temp_channels = set()  # store temp VC ids
 
+    # ================= LISTENER =================
+
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
 
@@ -19,13 +21,15 @@ class JoinToCreate(commands.Cog):
 
             channel_name = f"{member.name}'s VC"
 
-            # 🔓 PUBLIC VC (anyone can join)
+            # 🔒 PRIVATE VC
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(
-                    connect=True,
-                    speak=True
+                    connect=False,
+                    speak=False
                 ),
                 member: discord.PermissionOverwrite(
+                    connect=True,
+                    speak=True,
                     manage_channels=True,
                     move_members=True
                 )
@@ -45,6 +49,47 @@ class JoinToCreate(commands.Cog):
             if len(before.channel.members) == 0:
                 await before.channel.delete()
                 self.temp_channels.remove(before.channel.id)
+
+    # ================= VC ALLOW =================
+
+    @commands.command(name="vcallow")
+    async def vc_allow(self, ctx, member: discord.Member):
+        if not ctx.author.voice:
+            return await ctx.send("❌ Tum voice channel me nahi ho")
+
+        vc = ctx.author.voice.channel
+
+        if vc.id not in self.temp_channels:
+            return await ctx.send("❌ Ye temp VC nahi hai")
+
+        await vc.set_permissions(
+            member,
+            connect=True,
+            speak=True
+        )
+
+        await ctx.send(f"✅ **{member.mention}** ko VC join permission mil gayi")
+
+    # ================= VC REMOVE =================
+
+    @commands.command(name="vcremove")
+    async def vc_remove(self, ctx, member: discord.Member):
+        if not ctx.author.voice:
+            return await ctx.send("❌ Tum voice channel me nahi ho")
+
+        vc = ctx.author.voice.channel
+
+        if vc.id not in self.temp_channels:
+            return await ctx.send("❌ Ye temp VC nahi hai")
+
+        # ❌ Remove permissions
+        await vc.set_permissions(member, overwrite=None)
+
+        # 🔄 Kick user if inside VC
+        if member.voice and member.voice.channel == vc:
+            await member.move_to(None)
+
+        await ctx.send(f"🚫 **{member.mention}** ka VC access hata diya")
 
 # 🔥 REQUIRED FOR load_extension
 async def setup(bot):

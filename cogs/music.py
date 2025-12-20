@@ -31,10 +31,16 @@ class MusicControls(discord.ui.View):
         await self.player.pause(False)
         await interaction.response.send_message("▶️ Resumed", ephemeral=True)
 
-    # ⏭️ SKIP
+    # ⏭️ SKIP (FIXED)
     @discord.ui.button(label="Skip", emoji="⏭️", style=discord.ButtonStyle.primary)
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.stop()
+
+        # 🔥 MANUALLY PLAY NEXT TRACK
+        if not self.player.queue.is_empty:
+            next_track = self.player.queue.get()
+            await self.player.play(next_track)
+
         await interaction.response.send_message("⏭️ Skipped", ephemeral=True)
 
     # 🔁 LOOP
@@ -96,7 +102,7 @@ class Music(commands.Cog):
         view = MusicControls(ctx, player)
         await ctx.send(embed=embed, view=view)
 
-    # 🎵 AUTO PLAY NEXT SONG
+    # 🎵 AUTO PLAY NEXT (NATURAL END)
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player

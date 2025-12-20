@@ -1,8 +1,30 @@
 import os
+import json
 import discord
 from discord.ext import commands
 
 TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID"))
+
+DATA_DIR = "data"
+TICKET_FILE = f"{DATA_DIR}/ticket_panel.json"
+
+# ===================== FILE HELPERS =====================
+
+def load_ticket_message_id():
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+    if not os.path.exists(TICKET_FILE):
+        return None
+
+    try:
+        with open(TICKET_FILE, "r") as f:
+            return json.load(f).get("message_id")
+    except:
+        return None
+
+def save_ticket_message_id(message_id: int):
+    with open(TICKET_FILE, "w") as f:
+        json.dump({"message_id": message_id}, f)
 
 # ===================== CLOSE BUTTON VIEW =====================
 
@@ -22,11 +44,11 @@ class CloseTicketView(discord.ui.View):
                 ephemeral=True
             )
 
-        is_owner = user == guild.owner
-        is_admin = user.guild_permissions.administrator
-        is_ticket_owner = channel.name == f"ticket-{user.id}"
-
-        if not (is_owner or is_admin or is_ticket_owner):
+        if not (
+            user == guild.owner
+            or user.guild_permissions.administrator
+            or channel.name == f"ticket-{user.id}"
+        ):
             return await interaction.response.send_message(
                 "❌ You are not allowed to close this ticket.",
                 ephemeral=True
@@ -47,12 +69,11 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        for channel in guild.text_channels:
-            if channel.name == f"ticket-{user.id}":
+        for ch in guild.text_channels:
+            if ch.name == f"ticket-{user.id}":
                 return await interaction.response.send_message(
                     "❌ You already have an open ticket.",
-                    ephemeral=True,
-                    delete_after=5
+                    ephemeral=True
                 )
 
         overwrites = {
@@ -78,15 +99,14 @@ class TicketButton(discord.ui.View):
         )
 
         await ticket_channel.send(
-            content=f"{user.mention}",
+            content=user.mention,
             embed=embed,
             view=CloseTicketView()
         )
 
         await interaction.response.send_message(
             f"✅ Ticket created: {ticket_channel.mention}",
-            ephemeral=True,
-            delete_after=5
+            ephemeral=True
         )
 
 # ===================== COG =====================
@@ -101,6 +121,16 @@ class Ticket(commands.Cog):
         if not channel:
             return
 
+        message_id = load_ticket_message_id()
+
+        if message_id:
+            try:
+                msg = await channel.fetch_message(message_id)
+                await msg.edit(view=TicketButton(self.bot))
+                return
+            except:
+                pass
+
         embed = discord.Embed(
             description=(
                 "🎫 **Need Help?**\n\n"
@@ -110,7 +140,8 @@ class Ticket(commands.Cog):
             color=discord.Color.green()
         )
 
-        await channel.send(embed=embed, view=TicketButton(self.bot))
+        msg = await channel.send(embed=embed, view=TicketButton(self.bot))
+        save_ticket_message_id(msg.id)
 
 async def setup(bot):
     await bot.add_cog(Ticket(bot))

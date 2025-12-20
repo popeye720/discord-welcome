@@ -36,7 +36,6 @@ class MusicControls(discord.ui.View):
     async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.stop()
 
-        # 🔥 MANUALLY PLAY NEXT TRACK
         if not self.player.queue.is_empty:
             next_track = self.player.queue.get()
             await self.player.play(next_track)
@@ -64,15 +63,27 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # 🔒 LAVALINK SAFE CHECK
+    def lavalink_ready(self) -> bool:
+        return bool(wavelink.Pool.nodes)
+
     async def ensure_voice(self, ctx):
         if not ctx.author.voice:
             await ctx.send("❌ Pehle voice channel join karo")
             return False
         return True
 
-    # ▶️ PLAY (QUEUE SAFE)
+    # ▶️ PLAY (QUEUE SAFE + NO CRASH)
     @commands.command()
     async def play(self, ctx, *, search: str):
+
+        # 🚨 CRASH PROTECTION
+        if not self.lavalink_ready():
+            return await ctx.send(
+                "❌ **Music system offline**\n"
+                "⚠️ Lavalink URI set nahi hai ya server connect nahi hua."
+            )
+
         if not await self.ensure_voice(ctx):
             return
 

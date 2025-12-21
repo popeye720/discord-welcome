@@ -28,35 +28,45 @@ class ReactionRole(commands.Cog):
         if not channel:
             return await ctx.send("❌ Invalid channel ID.")
 
-        embed = discord.Embed(
-            title="Role Selection",
+        # ===== AGE MESSAGE =====
+        age_embed = discord.Embed(
+            title="Age Selection",
             description=(
-                f"**Age**\n"
                 f"{EMOJI_18} → 18+\n"
-                f"{EMOJI_MINOR} → Minor\n\n"
-                f"**Gender**\n"
+                f"{EMOJI_MINOR} → Minor"
+            ),
+            color=discord.Color.gold()
+        )
+
+        if IMAGE_URL.startswith("http"):
+            age_embed.set_thumbnail(url=IMAGE_URL)
+            age_embed.set_image(url=IMAGE_URL)
+
+        age_msg = await channel.send(embed=age_embed)
+        await age_msg.add_reaction(EMOJI_18)
+        await age_msg.add_reaction(EMOJI_MINOR)
+
+        # ===== GENDER MESSAGE =====
+        gender_embed = discord.Embed(
+            title="Gender Selection",
+            description=(
                 f"{EMOJI_BOY} → Boy\n"
                 f"{EMOJI_GIRL} → Girl"
             ),
             color=discord.Color.gold()
         )
 
-        # 🖼️ Thumbnail + Image from ENV (safe)
         if IMAGE_URL.startswith("http"):
-            embed.set_thumbnail(url=IMAGE_URL)
-            embed.set_image(url=IMAGE_URL)
+            gender_embed.set_thumbnail(url=IMAGE_URL)
+            gender_embed.set_image(url=IMAGE_URL)
 
-        msg = await channel.send(embed=embed)
-
-        # Reactions
-        await msg.add_reaction(EMOJI_18)
-        await msg.add_reaction(EMOJI_MINOR)
-        await msg.add_reaction(EMOJI_BOY)
-        await msg.add_reaction(EMOJI_GIRL)
+        gender_msg = await channel.send(embed=gender_embed)
+        await gender_msg.add_reaction(EMOJI_BOY)
+        await gender_msg.add_reaction(EMOJI_GIRL)
 
         await ctx.send(
-            f"✅ Reaction role message sent to {channel.mention}\n"
-            f"Message ID: `{msg.id}`"
+            f"✅ Reaction role messages sent to {channel.mention}\n"
+            f"Age Msg ID: `{age_msg.id}` | Gender Msg ID: `{gender_msg.id}`"
         )
 
     # ========= ADD ROLE =========
@@ -78,7 +88,6 @@ class ReactionRole(commands.Cog):
         rboy = guild.get_role(ROLE_BOY)
         rgirl = guild.get_role(ROLE_GIRL)
 
-        # ---- Age group ----
         if payload.emoji.name == EMOJI_18:
             await member.remove_roles(rminor)
             await member.add_roles(r18)
@@ -87,7 +96,6 @@ class ReactionRole(commands.Cog):
             await member.remove_roles(r18)
             await member.add_roles(rminor)
 
-        # ---- Gender group ----
         elif payload.emoji.name == EMOJI_BOY:
             await member.remove_roles(rgirl)
             await member.add_roles(rboy)

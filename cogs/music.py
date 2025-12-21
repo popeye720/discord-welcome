@@ -1,7 +1,19 @@
 import discord
 from discord.ext import commands
 import wavelink
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import os
 import asyncio
+
+# ================= SPOTIFY SETUP =================
+
+sp = spotipy.Spotify(
+    auth_manager=SpotifyClientCredentials(
+        client_id=os.getenv("SPOTIFY_CLIENT_ID"),
+        client_secret=os.getenv("SPOTIFY_CLIENT_SECRET")
+    )
+)
 
 # ================= MUSIC CONTROLS =================
 
@@ -9,14 +21,6 @@ class MusicControls(discord.ui.View):
     def __init__(self, player: wavelink.Player):
         super().__init__(timeout=None)
         self.player = player
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if not interaction.user.voice:
-            await interaction.response.send_message(
-                "❌ Pehle VC join karo", ephemeral=True
-            )
-            return False
-        return True
 
     @discord.ui.button(label="Pause", emoji="⏸️")
     async def pause(self, interaction, button):
@@ -47,13 +51,29 @@ class Music(commands.Cog):
 
     async def ensure_voice(self, ctx):
         if not ctx.author.voice:
-            await ctx.send("❌ Pehle voice channel join karo")
+            await ctx.send("❌ Pehle VC join karo")
             return False
         return True
 
-    # -------- PLAY COMMAND --------
+    def spotify_to_query(self, text: str) -> str | None:
+        try:
+            if "open.spotify.com/track" in text:
+                track = sp.track(text)
+            else:
+                result = sp.search(q=text, type="track", limit=1)
+                if not result["tracks"]["items"]:
+                    return None
+                track = result["tracks"]["items"][0]
+
+            name = track["name"]
+            artist = track["artists"][0]["name"]
+            return f"{name} {artist}"
+        except:
+            return None
+
+    # ---------------- PLAY ----------------
     @commands.command()
-    async def play(self, ctx, *, search: str):
+    async def play(self, ctx, *, query: str):
 
         if not await self.ensure_voice(ctx):
             return
@@ -62,11 +82,19 @@ class Music(commands.Cog):
         if not player:
             player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
-        # ✅ SoundCloud search (stable)
-        tracks = await wavelink.Playable.search(f"scsearch:{search}")
+        # 🎧 Spotify → text
+        search_query = self.spotify_to_query(query)
+        if not search_query:
+            await ctx.send("❌ Spotify par song nahi mila")
+            await asyncio.sleep(3)
+            await player.disconnect()
+            return
 
+        # 🔊 SoundCloud fallback
+        tracks = await wavelink.Playable.search(f"scsearch:{search_query}")
         if not tracks:
-            await ctx.send("❌ Song nahi mila, VC leave kar raha hoon")
+            await ctx.send("❌ Spotify song SoundCloud par available nahi hai")
+            await asyncio.sleep(3)
             await player.disconnect()
             return
 
@@ -74,60 +102,58 @@ class Music(commands.Cog):
 
         if player.playing:
             player.queue.put(track)
-            await ctx.send(f"📥 **Queued:** {track.title}")
+            await ctx.send(f"📥 Queued: **{track.title}**")
         else:
             await player.play(track)
             await ctx.send(
-                f"🎶 **Now Playing:** {track.title}",
+                f"🎶 Now Playing: **{track.title}**",
                 view=MusicControls(player)
             )
 
-    # -------- SKIP COMMAND --------
+    # ---------------- QUEUE ----------------
+    @commands.command()
+    async def queue(self, ctx):
+        player = ctx.voice_client
+        if not player or player.queue.is_empty:
+            return await ctx.send("📭 Queue empty")
+
+        desc = "\n".join(
+            f"{i+1}. {t.title}" for i, t in enumerate(player.queue)
+        )
+
+        await ctx.send(
+            embed=discord.Embed(
+                title="📜 Queue",
+                description=desc,
+                color=discord.Color.green()
+            )
+        )
+
+    # ---------------- SKIP ----------------
     @commands.command()
     async def skip(self, ctx):
-        player: wavelink.Player = ctx.voice_client
+        player = ctx.voice_client
         if not player:
             return await ctx.send("❌ Kuch play nahi ho raha")
 
         await player.stop()
         await ctx.send("⏭️ Skipped")
 
-    # -------- QUEUE COMMAND --------
-    @commands.command()
-    async def queue(self, ctx):
-        player: wavelink.Player = ctx.voice_client
-        if not player or player.queue.is_empty:
-            return await ctx.send("📭 Queue empty hai")
-
-        desc = "\n".join(
-            f"{i+1}. {t.title}" for i, t in enumerate(player.queue)
-        )
-
-        embed = discord.Embed(
-            title="📜 Music Queue",
-            description=desc,
-            color=discord.Color.blurple()
-        )
-        await ctx.send(embed=embed)
-
-    # -------- STOP COMMAND --------
+    # ---------------- STOP ----------------
     @commands.command()
     async def stop(self, ctx):
-        player: wavelink.Player = ctx.voice_client
-        if player:
-            await player.disconnect()
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
             await ctx.send("⏹️ Stopped & left VC")
 
-    # -------- AUTO LEAVE WHEN QUEUE ENDS --------
+    # ---------------- AUTO NEXT / AUTO LEAVE ----------------
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
 
         if not player.queue.is_empty:
-            next_track = player.queue.get()
-            await player.play(next_track)
+            await player.play(player.queue.get())
         else:
-            # ⏳ 10 sec wait, phir leave
             await asyncio.sleep(10)
             if not player.playing:
                 await player.disconnect()

@@ -4,3 +4,4 @@ PyNaCl
 feedparser
 python-dotenv
 wavelink
+spotipy

@@ -64,6 +64,7 @@ async def main():
     await bot.load_extension("cogs.ChannelManager")
     await bot.load_extension("cogs.Embedder")
     await bot.load_extension("cogs.reactionRole")
+    await bot.load_extension("cogs.clearmsg")
     await bot.start(TOKEN)
 
 asyncio.run(main())

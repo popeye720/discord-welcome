@@ -17,31 +17,26 @@ class ClearMessages(commands.Cog):
         if not channel:
             return await ctx.send("❌ Invalid channel ID.")
 
-        # ❌ Voice / Stage channels block
-        if channel.type in (
-            discord.ChannelType.voice,
-            discord.ChannelType.stage_voice
-        ):
-            return await ctx.send(
-                "❌ Ye **voice channel** hai. Voice channels ke messages clear nahi kiye ja sakte."
+        notify_channel = ctx.channel  # ✅ SAFE CHANNEL FOR UPDATES
+
+        # ❌ Voice channel
+        if isinstance(channel, discord.VoiceChannel):
+            return await notify_channel.send(
+                "❌ Ye voice channel hai. VC ke messages clear karne ke baad notify nahi hota."
             )
 
-        # ❌ Extra safety
-        if channel.type != discord.ChannelType.text:
-            return await ctx.send("❌ Ye text channel nahi hai.")
+        if not isinstance(channel, discord.TextChannel):
+            return await notify_channel.send("❌ Ye text channel nahi hai.")
 
-        # 📭 Check messages
-        has_msg = False
+        # 📭 Message check
         async for _ in channel.history(limit=1):
-            has_msg = True
             break
-
-        if not has_msg:
-            return await ctx.send(
+        else:
+            return await notify_channel.send(
                 f"ℹ️ {channel.mention} me koi message hi nahi hai."
             )
 
-        # Save settings
+        # Save data
         data = {
             "name": channel.name,
             "category": channel.category,
@@ -55,7 +50,8 @@ class ClearMessages(commands.Cog):
 
         new_channel = await ctx.guild.create_text_channel(**data)
 
-        await ctx.send(
+        # ✅ Notification guaranteed
+        await notify_channel.send(
             f"✅ Channel successfully cleared: {new_channel.mention}"
         )
 

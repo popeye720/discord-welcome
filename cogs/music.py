@@ -60,7 +60,7 @@ class Music(commands.Cog):
             return False
         return True
 
-    # 🔧 ONLY CHANGE IS HERE (OWNER BYPASS ADDED)
+    # ✅ OWNER CAN BYPASS BLOCKED CHANNEL
     def is_blocked_channel(self, ctx) -> bool:
         if ctx.author.id == OWNER_ID:
             return False
@@ -97,16 +97,14 @@ class Music(commands.Cog):
 
         return results
 
-    # ---------------- PLAY (OWNER ONLY) ----------------
+    # ---------------- PLAY ----------------
     @commands.command()
     async def play(self, ctx, *, query: str):
-
-        if ctx.author.id != OWNER_ID:
-            return await ctx.send("🚫 Only the bot owner can play music.")
 
         if not await self.ensure_voice(ctx):
             return
 
+        # 🚫 Blocked channel check (OWNER bypass inside function)
         if self.is_blocked_channel(ctx):
             return await ctx.send(
                 "🚫 Music playback is disabled in this voice channel."

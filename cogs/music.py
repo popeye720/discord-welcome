@@ -60,9 +60,14 @@ class Music(commands.Cog):
             return False
         return True
 
+    # 🔧 ONLY CHANGE IS HERE (OWNER BYPASS ADDED)
     def is_blocked_channel(self, ctx) -> bool:
+        if ctx.author.id == OWNER_ID:
+            return False
+
         if not ctx.author.voice or not ctx.author.voice.channel:
             return False
+
         return ctx.author.voice.channel.id == BLOCKED_CHANNEL_MUSIC
 
     # ---------- SPOTIFY PARSER ----------
@@ -96,14 +101,12 @@ class Music(commands.Cog):
     @commands.command()
     async def play(self, ctx, *, query: str):
 
-        # 🔒 OWNER ONLY CHECK
         if ctx.author.id != OWNER_ID:
             return await ctx.send("🚫 Only the bot owner can play music.")
 
         if not await self.ensure_voice(ctx):
             return
 
-        # 🚫 BLOCKED VOICE CHANNEL CHECK
         if self.is_blocked_channel(ctx):
             return await ctx.send(
                 "🚫 Music playback is disabled in this voice channel."

@@ -4,6 +4,8 @@ from discord.ext import commands
 import asyncio
 import wavelink
 
+ALLOWED_GUILD_ID = 1137320194692370482  # 🔒 YOUR SERVER
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -19,7 +21,13 @@ LAVALINK_PASS = os.getenv("LAVALINK_PASS")
 async def on_ready():
     print(f"✅ Bot Logged in as {bot.user}")
 
-    # 🔥 Lavalink connect (safe check)
+    # 🔒 Leave all unauthorized servers
+    for guild in bot.guilds:
+        if guild.id != ALLOWED_GUILD_ID:
+            print(f"❌ Leaving unauthorized server: {guild.name}")
+            await guild.leave()
+
+    # 🔥 Lavalink connect
     if not wavelink.Pool.nodes:
         if not LAVALINK_URI or not LAVALINK_PASS:
             print("❌ Lavalink ENV vars missing")
@@ -36,6 +44,12 @@ async def on_ready():
         )
 
         print("🎵 Lavalink connected successfully")
+
+@bot.event
+async def on_guild_join(guild):
+    if guild.id != ALLOWED_GUILD_ID:
+        print(f"❌ Unauthorized server joined: {guild.name}")
+        await guild.leave()
 
 async def main():
     await bot.load_extension("cogs.welcome")

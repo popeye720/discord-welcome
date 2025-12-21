@@ -73,7 +73,8 @@ class TicketButton(discord.ui.View):
             if ch.name == f"ticket-{user.id}":
                 return await interaction.response.send_message(
                     "❌ You already have an open ticket.",
-                    ephemeral=True
+                    ephemeral=True,
+                    delete_after=4
                 )
 
         overwrites = {
@@ -106,7 +107,8 @@ class TicketButton(discord.ui.View):
 
         await interaction.response.send_message(
             f"✅ Ticket created: {ticket_channel.mention}",
-            ephemeral=True
+            ephemeral=True,
+            delete_after=4
         )
 
 # ===================== COG =====================

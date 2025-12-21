@@ -9,30 +9,31 @@ class SimpleEmbed(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
-    async def embed(self, ctx, *, message: str):
+    @commands.command(name="emed")
+    async def emed(self, ctx, channel_id: int, *, message: str):
 
-        # 🔒 owner only check
+        # 🔒 Owner-only check
         if ctx.author.id != OWNER_ID:
-            return await ctx.send("❌ Sirf owner hi ye command use kar sakta hai.")
+            return await ctx.send("❌ Only the bot owner can use this command.")
+
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return await ctx.send("❌ Invalid channel ID.")
 
         embed = discord.Embed(
             description=message,
-            color=discord.Color.gold()  # yellow
+            color=discord.Color.gold()
         )
 
-        # 🖼️ image from ENV (safe)
+        # 🖼️ Image from ENV (safe)
         if IMAGE_URL.startswith("http"):
             embed.set_image(url=IMAGE_URL)
 
-        # 👤 niche avatar (footer)
-        embed.set_footer(
-            text=ctx.author.display_name,
-            icon_url=ctx.author.display_avatar.url
-        )
+        # 👤 Footer: ONLY avatar, no text
+        embed.set_footer(icon_url=ctx.author.display_avatar.url)
 
-        await ctx.send(embed=embed)
+        await channel.send(embed=embed)
+        await ctx.send(f"✅ Embedded message sent to {channel.mention}")
 
 async def setup(bot):
     await bot.add_cog(SimpleEmbed(bot))
-2

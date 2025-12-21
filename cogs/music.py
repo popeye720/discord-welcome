@@ -23,22 +23,22 @@ class MusicControls(discord.ui.View):
         self.player = player
 
     @discord.ui.button(label="Pause", emoji="⏸️")
-    async def pause(self, interaction, button):
+    async def pause(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.pause(True)
         await interaction.response.send_message("⏸️ Paused", ephemeral=True)
 
     @discord.ui.button(label="Resume", emoji="▶️")
-    async def resume(self, interaction, button):
+    async def resume(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.pause(False)
         await interaction.response.send_message("▶️ Resumed", ephemeral=True)
 
     @discord.ui.button(label="Skip", emoji="⏭️")
-    async def skip(self, interaction, button):
+    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.stop()
         await interaction.response.send_message("⏭️ Skipped", ephemeral=True)
 
     @discord.ui.button(label="Stop", emoji="⏹️")
-    async def stop(self, interaction, button):
+    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.disconnect()
         await interaction.response.send_message("⏹️ Stopped & left VC", ephemeral=True)
         self.stop()
@@ -51,25 +51,47 @@ class Music(commands.Cog):
 
     async def ensure_voice(self, ctx):
         if not ctx.author.voice:
-            await ctx.send("❌ Pehle VC join karo")
+            await ctx.send("❌ Please join a voice channel first.")
             return False
         return True
 
-    def spotify_to_query(self, text: str) -> str | None:
-        try:
-            if "open.spotify.com/track" in text:
-                track = sp.track(text)
-            else:
-                result = sp.search(q=text, type="track", limit=1)
-                if not result["tracks"]["items"]:
-                    return None
-                track = result["tracks"]["items"][0]
+    # ---------- SPOTIFY PARSER ----------
+    def spotify_to_queries(self, query: str) -> list[str]:
+        results = []
 
-            name = track["name"]
-            artist = track["artists"][0]["name"]
-            return f"{name} {artist}"
-        except:
-            return None
+        try:
+            # Track link
+            if "open.spotify.com/track" in query:
+                track = sp.track(query)
+                name = track["name"]
+                artist = track["artists"][0]["name"]
+                results.append(f"{name} {artist}")
+
+            # Playlist link
+            elif "open.spotify.com/playlist" in query:
+                playlist = sp.playlist_items(query)
+                for item in playlist["items"]:
+                    track = item["track"]
+                    if not track:
+                        continue
+                    name = track["name"]
+                    artist = track["artists"][0]["name"]
+                    results.append(f"{name} {artist}")
+
+            # Song name search
+            else:
+                search = sp.search(q=query, type="track", limit=1)
+                if not search["tracks"]["items"]:
+                    return []
+                track = search["tracks"]["items"][0]
+                name = track["name"]
+                artist = track["artists"][0]["name"]
+                results.append(f"{name} {artist}")
+
+        except Exception:
+            return []
+
+        return results
 
     # ---------------- PLAY ----------------
     @commands.command()
@@ -82,40 +104,40 @@ class Music(commands.Cog):
         if not player:
             player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
-        # 🎧 Spotify → text
-        search_query = self.spotify_to_query(query)
-        if not search_query:
-            await ctx.send("❌ Spotify par song nahi mila")
+        search_queries = self.spotify_to_queries(query)
+
+        if not search_queries:
+            await ctx.send("❌ No song found on Spotify.")
             await asyncio.sleep(3)
             await player.disconnect()
             return
 
-        # 🔊 SoundCloud fallback
-        tracks = await wavelink.Playable.search(f"scsearch:{search_query}")
-        if not tracks:
-            await ctx.send("❌ Spotify song SoundCloud par available nahi hai")
-            await asyncio.sleep(3)
-            await player.disconnect()
-            return
+        for index, search in enumerate(search_queries):
+            tracks = await wavelink.Playable.search(search)
 
-        track = tracks[0]
+            if not tracks:
+                continue
 
-        if player.playing:
-            player.queue.put(track)
-            await ctx.send(f"📥 Queued: **{track.title}**")
-        else:
-            await player.play(track)
-            await ctx.send(
-                f"🎶 Now Playing: **{track.title}**",
-                view=MusicControls(player)
-            )
+            track = tracks[0]
+
+            if player.playing or not player.queue.is_empty:
+                player.queue.put(track)
+            else:
+                await player.play(track)
+                await ctx.send(
+                    f"🎶 Now Playing: **{track.title}**",
+                    view=MusicControls(player)
+                )
+
+        if len(search_queries) > 1:
+            await ctx.send(f"📥 Added **{len(search_queries)}** tracks to queue.")
 
     # ---------------- QUEUE ----------------
     @commands.command()
     async def queue(self, ctx):
         player = ctx.voice_client
         if not player or player.queue.is_empty:
-            return await ctx.send("📭 Queue empty")
+            return await ctx.send("📭 Queue is empty.")
 
         desc = "\n".join(
             f"{i+1}. {t.title}" for i, t in enumerate(player.queue)
@@ -134,17 +156,17 @@ class Music(commands.Cog):
     async def skip(self, ctx):
         player = ctx.voice_client
         if not player:
-            return await ctx.send("❌ Kuch play nahi ho raha")
+            return await ctx.send("❌ Nothing is playing.")
 
         await player.stop()
-        await ctx.send("⏭️ Skipped")
+        await ctx.send("⏭️ Skipped.")
 
     # ---------------- STOP ----------------
     @commands.command()
     async def stop(self, ctx):
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Stopped & left VC")
+            await ctx.send("⏹️ Stopped & left voice channel.")
 
     # ---------------- AUTO NEXT / AUTO LEAVE ----------------
     @commands.Cog.listener()

@@ -1,30 +1,8 @@
 import os
-import json
 import discord
 from discord.ext import commands
 
 TICKET_CHANNEL_ID = int(os.getenv("TICKET_CHANNEL_ID"))
-
-DATA_DIR = "data"
-TICKET_FILE = f"{DATA_DIR}/ticket_panel.json"
-
-# ===================== FILE HELPERS =====================
-
-def load_ticket_message_id():
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    if not os.path.exists(TICKET_FILE):
-        return None
-
-    try:
-        with open(TICKET_FILE, "r") as f:
-            return json.load(f).get("message_id")
-    except:
-        return None
-
-def save_ticket_message_id(message_id: int):
-    with open(TICKET_FILE, "w") as f:
-        json.dump({"message_id": message_id}, f)
 
 # ===================== CLOSE BUTTON VIEW =====================
 
@@ -123,16 +101,14 @@ class Ticket(commands.Cog):
         if not channel:
             return
 
-        message_id = load_ticket_message_id()
+        # 🔥 Clear old messages in ticket panel channel
+        try:
+            async for msg in channel.history(limit=50):
+                await msg.delete()
+        except:
+            pass
 
-        if message_id:
-            try:
-                msg = await channel.fetch_message(message_id)
-                await msg.edit(view=TicketButton(self.bot))
-                return
-            except:
-                pass
-
+        # 🔥 Send fresh ticket panel
         embed = discord.Embed(
             description=(
                 "🎫 **Need Help?**\n\n"
@@ -142,8 +118,10 @@ class Ticket(commands.Cog):
             color=discord.Color.green()
         )
 
-        msg = await channel.send(embed=embed, view=TicketButton(self.bot))
-        save_ticket_message_id(msg.id)
+        await channel.send(
+            embed=embed,
+            view=TicketButton(self.bot)
+        )
 
 async def setup(bot):
     await bot.add_cog(Ticket(bot))

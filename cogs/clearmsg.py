@@ -10,6 +10,7 @@ class ClearMessages(commands.Cog):
 
     @commands.command(name="clearmsg")
     async def clearmsg(self, ctx, channel_id: int):
+        # Owner-only check
         if ctx.author.id != OWNER_ID:
             return await ctx.send("❌ Only the bot owner can use this command.")
 
@@ -17,42 +18,25 @@ class ClearMessages(commands.Cog):
         if not channel:
             return await ctx.send("❌ Invalid channel ID.")
 
-        notify_channel = ctx.channel  # ✅ SAFE CHANNEL FOR UPDATES
+        # Skip categories
+        if channel.type == discord.ChannelType.category:
+            return await ctx.send("❌ Messages cannot be cleared from a category.")
 
-        # ❌ Voice channel
-        if isinstance(channel, discord.VoiceChannel):
-            return await notify_channel.send(
-                "❌ Ye voice channel hai. VC ke messages clear karne ke baad notify nahi hota."
+        # Fast bulk delete (Text + Voice channel chats)
+        try:
+            deleted = await channel.purge(limit=None, bulk=True)
+        except discord.Forbidden:
+            return await ctx.send(
+                "❌ I do not have permission to delete messages in that channel."
             )
 
-        if not isinstance(channel, discord.TextChannel):
-            return await notify_channel.send("❌ Ye text channel nahi hai.")
-
-        # 📭 Message check
-        async for _ in channel.history(limit=1):
-            break
-        else:
-            return await notify_channel.send(
-                f"ℹ️ {channel.mention} me koi message hi nahi hai."
+        if not deleted:
+            return await ctx.send(
+                f"ℹ️ There are no messages to delete in {channel.mention}."
             )
 
-        # Save data
-        data = {
-            "name": channel.name,
-            "category": channel.category,
-            "position": channel.position,
-            "topic": channel.topic,
-            "slowmode_delay": channel.slowmode_delay,
-            "overwrites": channel.overwrites
-        }
-
-        await channel.delete(reason="Owner requested fast clear")
-
-        new_channel = await ctx.guild.create_text_channel(**data)
-
-        # ✅ Notification guaranteed
-        await notify_channel.send(
-            f"✅ Channel successfully cleared: {new_channel.mention}"
+        await ctx.send(
+            f"✅ Successfully deleted {len(deleted)} messages in {channel.mention}."
         )
 
 async def setup(bot):

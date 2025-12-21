@@ -9,35 +9,48 @@ class ClearMessages(commands.Cog):
         self.bot = bot
 
     @commands.command(name="clearmsg")
-    async def clearmsg(self, ctx, channel_id: int):
+    async def clearmsg(self, ctx, *channel_ids: int):
         # Owner-only check
         if ctx.author.id != OWNER_ID:
             return await ctx.send("❌ Only the bot owner can use this command.")
 
-        channel = ctx.guild.get_channel(channel_id)
-        if not channel:
-            return await ctx.send("❌ Invalid channel ID.")
+        # Validate number of IDs
+        if not channel_ids:
+            return await ctx.send("❌ Please provide at least one channel ID.")
+        if len(channel_ids) > 3:
+            return await ctx.send("❌ You can clear messages from a maximum of 3 channels at once.")
 
-        # Skip categories
-        if channel.type == discord.ChannelType.category:
-            return await ctx.send("❌ Messages cannot be cleared from a category.")
+        results = []
 
-        # Fast bulk delete (Text + Voice channel chats)
-        try:
-            deleted = await channel.purge(limit=None, bulk=True)
-        except discord.Forbidden:
-            return await ctx.send(
-                "❌ I do not have permission to delete messages in that channel."
-            )
+        for channel_id in channel_ids:
+            channel = ctx.guild.get_channel(channel_id)
 
-        if not deleted:
-            return await ctx.send(
-                f"ℹ️ There are no messages to delete in {channel.mention}."
-            )
+            if not channel:
+                results.append(f"❌ `{channel_id}` → Invalid channel ID.")
+                continue
 
-        await ctx.send(
-            f"✅ Successfully deleted {len(deleted)} messages in {channel.mention}."
-        )
+            if channel.type == discord.ChannelType.category:
+                results.append(f"❌ {channel.name} → Categories cannot be cleared.")
+                continue
+
+            try:
+                deleted = await channel.purge(limit=None, bulk=True)
+            except discord.Forbidden:
+                results.append(f"❌ {channel.mention} → Missing permissions.")
+                continue
+            except discord.HTTPException:
+                results.append(f"❌ {channel.mention} → Failed due to an API error.")
+                continue
+
+            if not deleted:
+                results.append(f"ℹ️ {channel.mention} → No messages to delete.")
+            else:
+                results.append(
+                    f"✅ {channel.mention} → Deleted {len(deleted)} messages."
+                )
+
+        # Send combined result message
+        await ctx.send("\n".join(results))
 
 async def setup(bot):
     await bot.add_cog(ClearMessages(bot))

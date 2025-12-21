@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import wavelink
+import asyncio
 
 # ================= MUSIC CONTROLS =================
 
@@ -8,10 +9,14 @@ class MusicControls(discord.ui.View):
     def __init__(self, player: wavelink.Player):
         super().__init__(timeout=None)
         self.player = player
-        self.loop = False
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        return interaction.user.voice is not None
+        if not interaction.user.voice:
+            await interaction.response.send_message(
+                "❌ Pehle VC join karo", ephemeral=True
+            )
+            return False
+        return True
 
     @discord.ui.button(label="Pause", emoji="⏸️")
     async def pause(self, interaction, button):
@@ -22,6 +27,11 @@ class MusicControls(discord.ui.View):
     async def resume(self, interaction, button):
         await self.player.pause(False)
         await interaction.response.send_message("▶️ Resumed", ephemeral=True)
+
+    @discord.ui.button(label="Skip", emoji="⏭️")
+    async def skip(self, interaction, button):
+        await self.player.stop()
+        await interaction.response.send_message("⏭️ Skipped", ephemeral=True)
 
     @discord.ui.button(label="Stop", emoji="⏹️")
     async def stop(self, interaction, button):
@@ -41,6 +51,7 @@ class Music(commands.Cog):
             return False
         return True
 
+    # -------- PLAY COMMAND --------
     @commands.command()
     async def play(self, ctx, *, search: str):
 
@@ -51,29 +62,75 @@ class Music(commands.Cog):
         if not player:
             player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
 
-        # ✅ CORRECT SEARCH (NO PREFIX)
-        tracks = await wavelink.Playable.search(search)
+        # ✅ SoundCloud search (stable)
+        tracks = await wavelink.Playable.search(f"scsearch:{search}")
 
         if not tracks:
-            return await ctx.send("❌ No results found")
+            await ctx.send("❌ Song nahi mila, VC leave kar raha hoon")
+            await player.disconnect()
+            return
 
         track = tracks[0]
 
         if player.playing:
             player.queue.put(track)
-            await ctx.send(f"📥 Queued: **{track.title}**")
+            await ctx.send(f"📥 **Queued:** {track.title}")
         else:
             await player.play(track)
             await ctx.send(
-                f"🎶 Now Playing: **{track.title}**",
+                f"🎶 **Now Playing:** {track.title}",
                 view=MusicControls(player)
             )
 
+    # -------- SKIP COMMAND --------
+    @commands.command()
+    async def skip(self, ctx):
+        player: wavelink.Player = ctx.voice_client
+        if not player:
+            return await ctx.send("❌ Kuch play nahi ho raha")
+
+        await player.stop()
+        await ctx.send("⏭️ Skipped")
+
+    # -------- QUEUE COMMAND --------
+    @commands.command()
+    async def queue(self, ctx):
+        player: wavelink.Player = ctx.voice_client
+        if not player or player.queue.is_empty:
+            return await ctx.send("📭 Queue empty hai")
+
+        desc = "\n".join(
+            f"{i+1}. {t.title}" for i, t in enumerate(player.queue)
+        )
+
+        embed = discord.Embed(
+            title="📜 Music Queue",
+            description=desc,
+            color=discord.Color.blurple()
+        )
+        await ctx.send(embed=embed)
+
+    # -------- STOP COMMAND --------
     @commands.command()
     async def stop(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
+        player: wavelink.Player = ctx.voice_client
+        if player:
+            await player.disconnect()
             await ctx.send("⏹️ Stopped & left VC")
+
+    # -------- AUTO LEAVE WHEN QUEUE ENDS --------
+    @commands.Cog.listener()
+    async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
+        player = payload.player
+
+        if not player.queue.is_empty:
+            next_track = player.queue.get()
+            await player.play(next_track)
+        else:
+            # ⏳ 10 sec wait, phir leave
+            await asyncio.sleep(10)
+            if not player.playing:
+                await player.disconnect()
 
 async def setup(bot):
     await bot.add_cog(Music(bot))

@@ -63,8 +63,12 @@ class YouTubeNotify(commands.Cog):
             title = latest.title
             video_url = latest.link
 
-            # 🔥 EXACT FORMAT YOU WANT
-            message = f"🎬 {title}\n🔗 {video_url}"
+            # 🔥 REQUIRED FORMAT
+            message = (
+                "@everyone\n"
+                f"🎬 {title}\n"
+                f"🔗 {video_url}"
+            )
 
             await channel.send(message)
 

@@ -1,15 +1,18 @@
 import discord
 from discord.ext import commands, tasks
-import aiohttp
+import feedparser
 import os
 
 FREE_GAMES_CHANNEL = int(os.getenv("FREE_GAMES_CHANNEL"))
-API_URL = "https://www.freetogame.com/api/giveaways"
+
+# ===== OFFICIAL RSS FEEDS =====
+EPIC_RSS = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+STEAM_RSS = "https://store.steampowered.com/feeds/news.xml"
 
 class FreeGames(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.posted = set()
+        self.posted_links = set()
 
     async def cog_load(self):
         self.check_free_games.start()
@@ -17,48 +20,62 @@ class FreeGames(commands.Cog):
     def cog_unload(self):
         self.check_free_games.cancel()
 
-    @tasks.loop(minutes=1)  # 🔥 every 1 minute
+    # 🔥 every 30 minutes (Carl-bot style, safe)
+    @tasks.loop(minutes=30)
     async def check_free_games(self):
         channel = self.bot.get_channel(FREE_GAMES_CHANNEL)
         if not channel:
             return
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(API_URL) as resp:
-                if resp.status != 200:
-                    return
-                games = await resp.json()
+        # ========= EPIC GAMES =========
+        epic = feedparser.parse(EPIC_RSS)
 
-        for game in games:
-            game_id = game["id"]
-            if game_id in self.posted:
+        for game in epic.entries:
+            link = game.get("link")
+            title = game.get("title")
+
+            if not link or link in self.posted_links:
                 continue
 
-            self.posted.add(game_id)
+            self.posted_links.add(link)
 
-            title = game["title"]
-            platforms = game["platforms"]
-            url = game["open_giveaway_url"]
-            price = game.get("worth", "Unknown")
-            end_date = game.get("end_date", "Limited Time")
-
-            # 🎯 PLATFORM TAG
-            if "Steam" in platforms:
-                platform_tag = "Steam"
-            elif "Epic" in platforms:
-                platform_tag = "Epic Games"
-            else:
-                platform_tag = platforms
-
-            # 🧾 FINAL MESSAGE (CARL-BOT STYLE)
-            message = (
-                f"🎮 **{title} ({platform_tag}) Giveaway**\n\n"
-                f"💰 Price: ~~{price}~~ → **FREE**\n"
-                f"⏰ Free Until: **{end_date}**\n\n"
-                f"🔗 {url}"
+            embed = discord.Embed(
+                title="🎮 FREE GAME (Epic Games)",
+                description=f"**{title}** is now **FREE** on Epic Games Store!",
+                color=discord.Color.green()
             )
+            embed.add_field(name="Platform", value="Epic Games", inline=True)
+            embed.add_field(name="Price", value="~~Paid~~ → **FREE**", inline=True)
+            embed.add_field(name="Claim Here", value=f"[Click to Claim]({link})", inline=False)
 
-            await channel.send(message)
+            await channel.send(embed=embed)
+
+        # ========= STEAM =========
+        steam = feedparser.parse(STEAM_RSS)
+
+        for entry in steam.entries:
+            title = entry.get("title", "")
+            link = entry.get("link")
+
+            # Steam free keywords (Carl-bot logic)
+            if (
+                "Free" not in title
+                or not link
+                or link in self.posted_links
+            ):
+                continue
+
+            self.posted_links.add(link)
+
+            embed = discord.Embed(
+                title="🎮 FREE GAME (Steam)",
+                description=title,
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Platform", value="Steam", inline=True)
+            embed.add_field(name="Link", value=f"[View on Steam]({link})", inline=False)
+
+            await channel.send(embed=embed)
 
     @check_free_games.before_loop
     async def before_check(self):

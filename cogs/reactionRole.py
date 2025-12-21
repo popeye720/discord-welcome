@@ -1,11 +1,20 @@
+import os
 import discord
 from discord.ext import commands
 
+IMAGE_URL = os.getenv("EMBED_IMAGE_URL", "").strip()
+
+# ===== ROLES =====
 ROLE_18 = 1438173585519935600
 ROLE_MINOR = 1438173783717580840
+ROLE_BOY = 1439319767902060789
+ROLE_GIRL = 1439319577191252221
 
+# ===== EMOJIS =====
 EMOJI_18 = "🔞"
 EMOJI_MINOR = "🧒"
+EMOJI_BOY = "👦"
+EMOJI_GIRL = "👧"
 
 class ReactionRole(commands.Cog):
     def __init__(self, bot):
@@ -14,23 +23,39 @@ class ReactionRole(commands.Cog):
     # ========= SETUP MESSAGE =========
     @commands.command()
     @commands.is_owner()
-    async def rrsetup(self, ctx):
+    async def rrsetup(self, ctx, channel_id: int):
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return await ctx.send("❌ Invalid channel ID.")
+
         embed = discord.Embed(
-            title="Age Verification",
+            title="Role Selection",
             description=(
-                f"{EMOJI_18} → **18+**\n"
-                f"{EMOJI_MINOR} → **Minor**"
+                f"**Age**\n"
+                f"{EMOJI_18} → 18+\n"
+                f"{EMOJI_MINOR} → Minor\n\n"
+                f"**Gender**\n"
+                f"{EMOJI_BOY} → Boy\n"
+                f"{EMOJI_GIRL} → Girl"
             ),
             color=discord.Color.gold()
         )
 
-        msg = await ctx.send(embed=embed)
+        # 🖼️ Thumbnail + Image from ENV (safe)
+        if IMAGE_URL.startswith("http"):
+            embed.set_thumbnail(url=IMAGE_URL)
+            embed.set_image(url=IMAGE_URL)
 
+        msg = await channel.send(embed=embed)
+
+        # Reactions
         await msg.add_reaction(EMOJI_18)
         await msg.add_reaction(EMOJI_MINOR)
+        await msg.add_reaction(EMOJI_BOY)
+        await msg.add_reaction(EMOJI_GIRL)
 
         await ctx.send(
-            f"✅ Reaction role message created.\n"
+            f"✅ Reaction role message sent to {channel.mention}\n"
             f"Message ID: `{msg.id}`"
         )
 
@@ -48,18 +73,28 @@ class ReactionRole(commands.Cog):
         if not member:
             return
 
-        role_18 = guild.get_role(ROLE_18)
-        role_minor = guild.get_role(ROLE_MINOR)
+        r18 = guild.get_role(ROLE_18)
+        rminor = guild.get_role(ROLE_MINOR)
+        rboy = guild.get_role(ROLE_BOY)
+        rgirl = guild.get_role(ROLE_GIRL)
 
+        # ---- Age group ----
         if payload.emoji.name == EMOJI_18:
-            if role_minor in member.roles:
-                await member.remove_roles(role_minor)
-            await member.add_roles(role_18)
+            await member.remove_roles(rminor)
+            await member.add_roles(r18)
 
         elif payload.emoji.name == EMOJI_MINOR:
-            if role_18 in member.roles:
-                await member.remove_roles(role_18)
-            await member.add_roles(role_minor)
+            await member.remove_roles(r18)
+            await member.add_roles(rminor)
+
+        # ---- Gender group ----
+        elif payload.emoji.name == EMOJI_BOY:
+            await member.remove_roles(rgirl)
+            await member.add_roles(rboy)
+
+        elif payload.emoji.name == EMOJI_GIRL:
+            await member.remove_roles(rboy)
+            await member.add_roles(rgirl)
 
     # ========= REMOVE ROLE =========
     @commands.Cog.listener()
@@ -72,14 +107,18 @@ class ReactionRole(commands.Cog):
         if not member:
             return
 
-        role_18 = guild.get_role(ROLE_18)
-        role_minor = guild.get_role(ROLE_MINOR)
+        role_map = {
+            EMOJI_18: ROLE_18,
+            EMOJI_MINOR: ROLE_MINOR,
+            EMOJI_BOY: ROLE_BOY,
+            EMOJI_GIRL: ROLE_GIRL
+        }
 
-        if payload.emoji.name == EMOJI_18:
-            await member.remove_roles(role_18)
-
-        elif payload.emoji.name == EMOJI_MINOR:
-            await member.remove_roles(role_minor)
+        role_id = role_map.get(payload.emoji.name)
+        if role_id:
+            role = guild.get_role(role_id)
+            if role:
+                await member.remove_roles(role)
 
 async def setup(bot):
     await bot.add_cog(ReactionRole(bot))

@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import wavelink
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
@@ -49,44 +50,35 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def ensure_voice(self, ctx):
-        if not ctx.author.voice:
-            await ctx.send("❌ Please join a voice channel first.")
+    async def ensure_voice(self, interaction: discord.Interaction):
+        if not interaction.user.voice:
+            await interaction.response.send_message(
+                "❌ Please join a voice channel first.",
+                ephemeral=True
+            )
             return False
         return True
 
     # ---------- SPOTIFY PARSER ----------
     def spotify_to_queries(self, query: str) -> list[str]:
         results = []
-
         try:
-            # Track link
             if "open.spotify.com/track" in query:
                 track = sp.track(query)
-                name = track["name"]
-                artist = track["artists"][0]["name"]
-                results.append(f"{name} {artist}")
+                results.append(f"{track['name']} {track['artists'][0]['name']}")
 
-            # Playlist link
             elif "open.spotify.com/playlist" in query:
                 playlist = sp.playlist_items(query)
                 for item in playlist["items"]:
                     track = item["track"]
-                    if not track:
-                        continue
-                    name = track["name"]
-                    artist = track["artists"][0]["name"]
-                    results.append(f"{name} {artist}")
+                    if track:
+                        results.append(f"{track['name']} {track['artists'][0]['name']}")
 
-            # Song name search
             else:
                 search = sp.search(q=query, type="track", limit=1)
-                if not search["tracks"]["items"]:
-                    return []
-                track = search["tracks"]["items"][0]
-                name = track["name"]
-                artist = track["artists"][0]["name"]
-                results.append(f"{name} {artist}")
+                if search["tracks"]["items"]:
+                    track = search["tracks"]["items"][0]
+                    results.append(f"{track['name']} {track['artists'][0]['name']}")
 
         except Exception:
             return []
@@ -94,27 +86,28 @@ class Music(commands.Cog):
         return results
 
     # ---------------- PLAY ----------------
-    @commands.command()
-    async def play(self, ctx, *, query: str):
+    @app_commands.command(name="play", description="Play music from Spotify or search")
+    async def play(self, interaction: discord.Interaction, query: str):
 
-        if not await self.ensure_voice(ctx):
+        if not await self.ensure_voice(interaction):
             return
 
-        player: wavelink.Player = ctx.voice_client
+        await interaction.response.defer()
+
+        player: wavelink.Player = interaction.guild.voice_client
         if not player:
-            player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+            player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
 
         search_queries = self.spotify_to_queries(query)
 
         if not search_queries:
-            await ctx.send("❌ No song found on Spotify.")
+            await interaction.followup.send("❌ No song found on Spotify.")
             await asyncio.sleep(3)
             await player.disconnect()
             return
 
-        for index, search in enumerate(search_queries):
+        for search in search_queries:
             tracks = await wavelink.Playable.search(search)
-
             if not tracks:
                 continue
 
@@ -124,26 +117,31 @@ class Music(commands.Cog):
                 player.queue.put(track)
             else:
                 await player.play(track)
-                await ctx.send(
+                await interaction.followup.send(
                     f"🎶 Now Playing: **{track.title}**",
                     view=MusicControls(player)
                 )
 
         if len(search_queries) > 1:
-            await ctx.send(f"📥 Added **{len(search_queries)}** tracks to queue.")
+            await interaction.followup.send(
+                f"📥 Added **{len(search_queries)}** tracks to queue."
+            )
 
     # ---------------- QUEUE ----------------
-    @commands.command()
-    async def queue(self, ctx):
-        player = ctx.voice_client
+    @app_commands.command(name="queue", description="Show music queue")
+    async def queue(self, interaction: discord.Interaction):
+        player = interaction.guild.voice_client
         if not player or player.queue.is_empty:
-            return await ctx.send("📭 Queue is empty.")
+            return await interaction.response.send_message(
+                "📭 Queue is empty.",
+                ephemeral=True
+            )
 
         desc = "\n".join(
             f"{i+1}. {t.title}" for i, t in enumerate(player.queue)
         )
 
-        await ctx.send(
+        await interaction.response.send_message(
             embed=discord.Embed(
                 title="📜 Queue",
                 description=desc,
@@ -152,21 +150,26 @@ class Music(commands.Cog):
         )
 
     # ---------------- SKIP ----------------
-    @commands.command()
-    async def skip(self, ctx):
-        player = ctx.voice_client
+    @app_commands.command(name="skip", description="Skip current track")
+    async def skip(self, interaction: discord.Interaction):
+        player = interaction.guild.voice_client
         if not player:
-            return await ctx.send("❌ Nothing is playing.")
+            return await interaction.response.send_message(
+                "❌ Nothing is playing.",
+                ephemeral=True
+            )
 
         await player.stop()
-        await ctx.send("⏭️ Skipped.")
+        await interaction.response.send_message("⏭️ Skipped.")
 
     # ---------------- STOP ----------------
-    @commands.command()
-    async def stop(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-            await ctx.send("⏹️ Stopped & left voice channel.")
+    @app_commands.command(name="stop", description="Stop music and leave VC")
+    async def stop(self, interaction: discord.Interaction):
+        if interaction.guild.voice_client:
+            await interaction.guild.voice_client.disconnect()
+            await interaction.response.send_message(
+                "⏹️ Stopped & left voice channel."
+            )
 
     # ---------------- AUTO NEXT / AUTO LEAVE ----------------
     @commands.Cog.listener()
@@ -182,3 +185,4 @@ class Music(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
+    await bot.tree.sync()

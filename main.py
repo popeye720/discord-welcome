@@ -62,7 +62,7 @@ async def main():
     await bot.load_extension("cogs.free_games")
     await bot.load_extension("cogs.music")
     await bot.load_extension("cogs.ChannelManager")
-    await bot.load_extension("cogs.embed_message")
+    await bot.load_extension("cogs.Embedder")
     await bot.start(TOKEN)
 
 asyncio.run(main())

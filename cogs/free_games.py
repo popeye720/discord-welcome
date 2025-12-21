@@ -21,7 +21,7 @@ class FreeGames(commands.Cog):
         self.check_free_games.cancel()
 
     # 🔥 every 30 minutes (Carl-bot style, safe)
-    @tasks.loop(minutes=30)
+    @tasks.loop(minutes=10)
     async def check_free_games(self):
         channel = self.bot.get_channel(FREE_GAMES_CHANNEL)
         if not channel:

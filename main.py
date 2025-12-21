@@ -60,7 +60,8 @@ async def main():
     await bot.load_extension("cogs.join_to_create")
     await bot.load_extension("cogs.auto_triggers")
     await bot.load_extension("cogs.free_games")
-    await bot.load_extension("cogs.music") 
+    await bot.load_extension("cogs.music")
+    await bot.load_extension("cogs.ChannelManager")
     await bot.start(TOKEN)
 
 asyncio.run(main())

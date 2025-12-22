@@ -3,17 +3,14 @@ import asyncio
 import datetime
 import pytz
 import discord
-from discord.ext import commands
-from googleapiclient.discovery import build
-import pytchat
+from discord.ext import commands, tasks
+import googleapiclient.discovery
+import googleapiclient.errors
 
 # ================= ENV =================
 YOUTUBE_API_KEY = os.getenv("NILESH_YT_API")
 DISCORD_CLIP_CHANNEL_ID = int(os.getenv("CLIP_DISCORD_ID"))
-
 YOUTUBE_CHANNEL_ID = "UCcwp3JkrWcn5kF4KKzAVqCA"
-
-youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
 
 # ================= DISCORD BUTTON =================
@@ -29,58 +26,120 @@ class ClipButton(discord.ui.View):
         )
 
 
-# ================= COG =================
 class Clip(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def cog_load(self):
-        asyncio.create_task(self.listen_youtube_chat())
+        self.youtube = googleapiclient.discovery.build(
+            "youtube", "v3", developerKey=YOUTUBE_API_KEY
+        )
 
-    # ================= GET LIVE VIDEO =================
-    def get_live_video(self):
+        self.live_chat_id = None
+        self.next_page_token = None
+        self.stream_start_time = None
+        self.current_video_id = None
+
+        self.find_live_chat.start()
+
+    def cog_unload(self):
+        self.find_live_chat.cancel()
+        self.read_chat.cancel()
+
+    # ================= FIND LIVE STREAM =================
+    @tasks.loop(seconds=30)
+    async def find_live_chat(self):
         try:
-            req = youtube.search().list(
-                part="snippet",
+            req = self.youtube.search().list(
+                part="id",
                 channelId=YOUTUBE_CHANNEL_ID,
                 eventType="live",
-                type="video"
+                type="video",
+                maxResults=1
             )
             res = req.execute()
 
             if not res["items"]:
-                return None
+                return
 
             video_id = res["items"][0]["id"]["videoId"]
 
-            details = youtube.videos().list(
+            # Prevent duplicate attach
+            if video_id == self.current_video_id:
+                return
+
+            video_req = self.youtube.videos().list(
                 part="liveStreamingDetails",
                 id=video_id
-            ).execute()
+            )
+            video_res = video_req.execute()
 
-            start_time = details["items"][0]["liveStreamingDetails"]["actualStartTime"]
-            return video_id, start_time
+            details = video_res["items"][0]["liveStreamingDetails"]
+
+            self.live_chat_id = details.get("activeLiveChatId")
+            self.stream_start_time = details.get("actualStartTime")
+            self.current_video_id = video_id
+            self.next_page_token = None
+
+            print(f"✅ LIVE detected: {video_id}")
+
+            if not self.read_chat.is_running():
+                self.read_chat.start()
 
         except Exception as e:
-            print("❌ YouTube API error:", e)
-            return None
+            print("❌ Live detect error:", e)
 
-    # ================= BUILD CLIP URL =================
-    def build_clip_url(self, video_id, start_time):
-        start_dt = datetime.datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+    # ================= READ LIVE CHAT =================
+    @tasks.loop(seconds=5)
+    async def read_chat(self):
+        if not self.live_chat_id:
+            return
+
+        try:
+            req = self.youtube.liveChatMessages().list(
+                liveChatId=self.live_chat_id,
+                part="snippet,authorDetails",
+                pageToken=self.next_page_token,
+                maxResults=200,
+            )
+
+            res = await self.bot.loop.run_in_executor(None, req.execute)
+
+            self.next_page_token = res.get("nextPageToken")
+
+            polling_ms = res.get("pollingIntervalMillis", 3000)
+            self.read_chat.change_interval(seconds=max(1, polling_ms / 1000))
+
+            for msg in res.get("items", []):
+                author = msg["authorDetails"]["displayName"]
+                text = msg["snippet"]["displayMessage"]
+
+                is_mod = msg["authorDetails"]["isChatModerator"]
+                is_owner = msg["authorDetails"]["isChatOwner"]
+
+                if not (is_mod or is_owner):
+                    continue
+
+                if text.lower().startswith("!clip"):
+                    clip_name = text[len("!clip"):].strip()
+                    await self.send_clip(author, clip_name)
+
+        except googleapiclient.errors.HttpError:
+            await asyncio.sleep(10)
+        except Exception as e:
+            print("❌ Chat read error:", e)
+
+    # ================= SEND CLIP =================
+    async def send_clip(self, author, clip_name):
+        if not self.stream_start_time or not self.current_video_id:
+            return
+
+        start_dt = datetime.datetime.fromisoformat(
+            self.stream_start_time.replace("Z", "+00:00")
+        )
         now = datetime.datetime.now(pytz.UTC)
         seconds = int((now - start_dt).total_seconds())
 
-        return f"https://www.youtube.com/watch?v={video_id}&t={seconds}s", seconds
-
-    # ================= SEND TO DISCORD =================
-    async def send_clip(self, author, clip_name):
-        data = self.get_live_video()
-        if not data:
-            return
-
-        video_id, start_time = data
-        url, seconds = self.build_clip_url(video_id, start_time)
+        url = f"https://www.youtube.com/watch?v={self.current_video_id}&t={seconds}s"
 
         channel = self.bot.get_channel(DISCORD_CLIP_CHANNEL_ID)
         if not channel:
@@ -102,56 +161,6 @@ class Clip(commands.Cog):
 
         await channel.send(embed=embed, view=ClipButton(url))
 
-    # ================= YOUTUBE CHAT LISTENER =================
-    async def listen_youtube_chat(self):
-        await self.bot.wait_until_ready()
-        print("🎬 YouTube Clip System Started (AUTO MODE)")
 
-        current_video_id = None
-
-        while True:
-            live = self.get_live_video()
-
-            # No live → wait
-            if not live:
-                await asyncio.sleep(30)
-                continue
-
-            video_id, _ = live
-
-            # Same live already handled
-            if video_id == current_video_id:
-                await asyncio.sleep(15)
-                continue
-
-            current_video_id = video_id
-            print(f"✅ New LIVE detected: {video_id}")
-
-            try:
-                chat = pytchat.create(video_id=video_id)
-            except Exception as e:
-                print("❌ Failed to attach live chat:", e)
-                await asyncio.sleep(30)
-                continue
-
-            while chat.is_alive():
-                for msg in chat.get().sync_items():
-                    text = msg.message.strip()
-
-                    # Only OWNER or MODERATOR
-                    if not (msg.isChatModerator or msg.isChatOwner):
-                        continue
-
-                    if text.startswith("!clip"):
-                        clip_name = text.replace("!clip", "").strip()
-                        await self.send_clip(msg.author.name, clip_name)
-
-                await asyncio.sleep(1)
-
-            print("🔴 Stream ended → waiting for next live...")
-            await asyncio.sleep(10)
-
-
-# ================= SETUP =================
 async def setup(bot):
     await bot.add_cog(Clip(bot))

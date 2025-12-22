@@ -33,7 +33,9 @@ class ClipButton(discord.ui.View):
 class Clip(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.bot.loop.create_task(self.listen_youtube_chat())
+
+    async def cog_load(self):
+        asyncio.create_task(self.listen_youtube_chat())
 
     # ================= GET LIVE VIDEO =================
     def get_live_video(self):

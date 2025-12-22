@@ -32,7 +32,7 @@ class YouTubeClipper(commands.Cog):
             self.youtube.close()
 
     # 🔍 FIND LIVE STREAM (PRINT ONLY ONCE)
-    @tasks.loop(seconds=30)
+    @tasks.loop(minutes=15)
     async def find_live(self):
         try:
             req = self.youtube.search().list(

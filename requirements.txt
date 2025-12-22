@@ -5,3 +5,6 @@ feedparser
 python-dotenv
 wavelink
 spotipy
+pytchat
+google-api-python-client
+pytz

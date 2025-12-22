@@ -47,7 +47,6 @@ class Protection(commands.Cog):
                     description=(
                         f"Hello **{message.author.name}**, 👋\n\n"
                         "**Links are not allowed in this server.**\n\n"
-                        "📌 Please use the allowed links channel."
                     ),
                     color=discord.Color.red()
                 )

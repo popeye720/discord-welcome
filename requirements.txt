@@ -1,10 +1,9 @@
-discord.py
-yt-dlp
+py-cord[voice]
 PyNaCl
+yt-dlp
 feedparser
 python-dotenv
 wavelink
 spotipy
 google-api-python-client
 pytz
-pycord

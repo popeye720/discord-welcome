@@ -8,7 +8,7 @@ OWNER_ID = int(os.getenv("OWNER_ID"))
 class Recorder(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.active_recordings = {}  # guild_id -> data
+        self.active = {}  # guild_id -> session data
 
     def is_owner(self, ctx):
         return ctx.author.id == OWNER_ID
@@ -21,19 +21,23 @@ class Recorder(commands.Cog):
         if not user.voice or not user.voice.channel:
             return await ctx.reply("❌ User is not in a voice channel.")
 
-        if minutes <= 0 or minutes > 120:
-            return await ctx.reply("❌ Invalid recording duration.")
+        if minutes <= 0 or minutes > 10:
+            return await ctx.reply("❌ Duration must be between 1 and 10 minutes.")
 
         channel = user.voice.channel
         vc = await channel.connect()
 
+        # IMPORTANT: wait for voice to be ready
+        await asyncio.sleep(2)
+
         sink = discord.sinks.WaveSink()
 
-        self.active_recordings[ctx.guild.id] = {
-            "vc": vc,
-            "sink": sink,
+        self.active[ctx.guild.id] = {
             "ctx": ctx,
             "user": user,
+            "vc": vc,
+            "sink": sink,
+            "stopped": False,
         }
 
         await ctx.send(
@@ -44,62 +48,64 @@ class Recorder(commands.Cog):
 
         vc.start_recording(
             sink,
-            self.recording_finished,
+            self._on_finish,
             ctx.guild.id
         )
 
-        # Max duration timer
-        await asyncio.sleep(minutes * 60)
+        try:
+            await asyncio.sleep(minutes * 60)
+        finally:
+            # Force stop if still active
+            session = self.active.get(ctx.guild.id)
+            if session and not session["stopped"]:
+                vc.stop_recording()
 
-        if ctx.guild.id in self.active_recordings:
-            vc.stop_recording()
-
-    async def recording_finished(self, sink, guild_id):
-        data = self.active_recordings.pop(guild_id, None)
-        if not data:
+    async def _on_finish(self, sink, guild_id):
+        session = self.active.pop(guild_id, None)
+        if not session:
             return
 
-        ctx = data["ctx"]
-        user = data["user"]
-        vc = data["vc"]
+        ctx = session["ctx"]
+        user = session["user"]
+        vc = session["vc"]
+
+        session["stopped"] = True
 
         if vc:
             await vc.disconnect()
 
         audio = sink.audio_data.get(user.id)
-        if not audio:
-            await ctx.send("❌ Recording stopped, but no audio was captured.")
-            return
 
         owner = await self.bot.fetch_user(OWNER_ID)
 
-        file = discord.File(
-            audio.file,
-            filename=f"{user.id}_recording.wav"
-        )
+        if audio:
+            file = discord.File(
+                audio.file,
+                filename=f"{user.id}_recording.wav"
+            )
 
-        await owner.send(
-            content=(
-                "🎧 **Recording Finished**\n"
-                f"👤 User: {user}\n"
-                f"📁 Format: WAV (HD)"
-            ),
-            file=file
-        )
+            await owner.send(
+                content=(
+                    "🎧 **Recording Finished**\n"
+                    f"👤 User: {user}\n"
+                    f"📁 Format: WAV (HD)"
+                ),
+                file=file
+            )
 
-        await ctx.send("✅ **Recording finished and sent to owner DM.**")
+            await ctx.send("✅ **Recording completed and sent to owner DM.**")
+        else:
+            await ctx.send("⚠️ **Recording stopped, but no audio was captured.**")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        if member.guild.id not in self.active_recordings:
+        session = self.active.get(member.guild.id)
+        if not session:
             return
 
-        data = self.active_recordings[member.guild.id]
-        target_user = data["user"]
-        vc = data["vc"]
-
-        # If the recorded user leaves voice
-        if member.id == target_user.id and before.channel and not after.channel:
+        # If the recorded user leaves VC early
+        if member.id == session["user"].id and before.channel and not after.channel:
+            vc = session["vc"]
             if vc and vc.is_recording():
                 vc.stop_recording()
 

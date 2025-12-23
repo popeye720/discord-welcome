@@ -60,7 +60,7 @@ async def main():
     await bot.load_extension("cogs.join_to_create")
     await bot.load_extension("cogs.auto_triggers")
     await bot.load_extension("cogs.free_games")
-    #await bot.load_extension("cogs.music")
+    await bot.load_extension("cogs.music")
     await bot.load_extension("cogs.ChannelManager")
     await bot.load_extension("cogs.Embedder")
     await bot.load_extension("cogs.reactionRole")
@@ -68,7 +68,7 @@ async def main():
     await bot.load_extension("cogs.protection")
     await bot.load_extension("cogs.dm")
     await bot.load_extension("cogs.followuser")
-    await bot.load_extension("cogs.record")
+    #await bot.load_extension("cogs.record")
     #await bot.load_extension("cogs.clip")
     await bot.start(TOKEN)
 

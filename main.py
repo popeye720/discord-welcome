@@ -70,7 +70,7 @@ async def main():
     await bot.load_extension("cogs.followuser")
     await bot.load_extension("cogs.stream")
     #await bot.load_extension("cogs.record")
-    #await bot.load_extension("cogs.clip")
+    await bot.load_extension("cogs.clip")
     await bot.start(TOKEN)
 
 asyncio.run(main())

@@ -67,6 +67,7 @@ async def main():
     await bot.load_extension("cogs.clearmsg")
     await bot.load_extension("cogs.protection")
     await bot.load_extension("cogs.dm")
+    await bot.load_extension("cogs.followuser")
     #await bot.load_extension("cogs.clip")
     await bot.start(TOKEN)
 

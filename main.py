@@ -65,7 +65,7 @@ async def main():
     await bot.load_extension("cogs.Embedder")
     await bot.load_extension("cogs.reactionRole")
     await bot.load_extension("cogs.clearmsg")
-    await bot.load_extension("cogs.protection")
+    await bot.load_extension("cogs.antilinks")
     await bot.load_extension("cogs.dm")
     await bot.load_extension("cogs.followuser")
     await bot.load_extension("cogs.stream")

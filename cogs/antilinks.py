@@ -2,6 +2,7 @@ import os
 import re
 import discord
 from discord.ext import commands
+import asyncio   # ✅ ADD THIS
 
 LINK_REGEX = re.compile(
     r"(https?:\/\/|www\.)\S+",
@@ -29,12 +30,19 @@ class Protection(commands.Cog):
         if message.author.id == OWNER_ID:
             return
 
-        # Allowed channel
-        if message.channel.id == ALLOWED_CHANNEL_LINKS:
-            return
-
         # Detect link
         if LINK_REGEX.search(message.content):
+
+            # ✅ Allowed channel → delete after 2 minutes
+            if message.channel.id == ALLOWED_CHANNEL_LINKS:
+                try:
+                    await asyncio.sleep(120)  # 2 minutes
+                    await message.delete()
+                except:
+                    pass
+                return
+
+            # ❌ Other channels → instant delete
             try:
                 await message.delete()
             except discord.Forbidden:

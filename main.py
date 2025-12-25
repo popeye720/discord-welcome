@@ -4,7 +4,7 @@ from discord.ext import commands
 import asyncio
 import wavelink
 
-ALLOWED_GUILD_ID = 1137320194692370482  # 🔒 YOUR SERVER
+ALLOWED_GUILD_ID = 1137320194692370482
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -69,8 +69,7 @@ async def main():
     await bot.load_extension("cogs.dm")
     await bot.load_extension("cogs.followuser")
     await bot.load_extension("cogs.stream")
-    #await bot.load_extension("cogs.record")
-    #await bot.load_extension("cogs.clip")
+    await bot.load_extension("cogs.clip")
     await bot.start(TOKEN)
 
 asyncio.run(main())

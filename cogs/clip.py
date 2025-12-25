@@ -2,17 +2,9 @@ from discord.ext import commands, tasks
 import discord
 import googleapiclient.discovery
 import googleapiclient.errors
-import asyncio
 import os
+import asyncio
 from datetime import datetime, timezone
-
-# 🔧 LOAD ENV VARIABLES
-YOUTUBE_API_KEY = os.getenv("NILESH_YT_API")
-YOUTUBE_CHANNEL_ID = os.getenv("NILESHYT_CHANNEL_ID")
-LIVE_NOTIFY_CHANNEL = os.getenv("LIVE_NOTIFY_CHANNEL")
-
-if not all([YOUTUBE_API_KEY, YOUTUBE_CHANNEL_ID, LIVE_NOTIFY_CHANNEL]):
-    raise RuntimeError("❌ Missing ENV variables for YouTube Live Cog")
 
 # 🔘 BUTTON VIEW
 class ClipView(discord.ui.View):
@@ -33,41 +25,80 @@ class LiveChatForwarder(commands.Cog):
         self.youtube = googleapiclient.discovery.build(
             "youtube",
             "v3",
-            developerKey=YOUTUBE_API_KEY
+            developerKey=os.environ["NILESH_YT_API"]
         )
 
+        self.clip_active = False
         self.live_chat_id = None
         self.video_id = None
         self.stream_start_time = None
         self.next_page_token = None
 
-        print("🔁 YouTube Live detector started")
-        self.find_live_chat.start()
+        # 🔒 PRO FIX FLAG
+        self.live_found_once = False
 
-    def cog_unload(self):
-        try:
-            self.find_live_chat.cancel()
-            self.read_chat.cancel()
-        except Exception:
-            pass
+        print("🟡 Clip system loaded (waiting for !clipactive)")
 
-    # 🔍 FIND LIVE STREAM
+    # ===================== COMMANDS =====================
+
+    @commands.command()
+    async def clipactive(self, ctx):
+        if self.clip_active:
+            await ctx.send("⚠️ Clip system already active")
+            return
+
+        self.clip_active = True
+        self.live_found_once = False
+
+        if not self.find_live_chat.is_running():
+            self.find_live_chat.start()
+
+        await ctx.send("🟢 Clip system activated — finding live stream...")
+
+    @commands.command()
+    async def clipdeactive(self, ctx):
+        self.clip_active = False
+        self._reset_live_state(full=True)
+
+        if self.find_live_chat.is_running():
+            self.find_live_chat.stop()
+
+        await ctx.send("🔴 Clip system deactivated")
+
+    # 🔁 MANUAL RECHECK ONLY
+    @commands.command()
+    async def rechecklive(self, ctx):
+        self._reset_live_state(full=False)
+        self.live_found_once = False
+
+        if not self.find_live_chat.is_running():
+            self.find_live_chat.start()
+
+        await ctx.send("🔄 Rechecking live stream manually...")
+
+    # ===================== FIND LIVE =====================
+
     @tasks.loop(minutes=2)
     async def find_live_chat(self):
-        try:
-            if self.live_chat_id:
-                return
+        if not self.clip_active:
+            return
 
+        # 🔒 ABSOLUTE SEARCH BLOCK
+        if self.live_found_once or self.live_chat_id or self.video_id:
+            return
+
+        try:
             req = self.youtube.search().list(
                 part="id",
-                channelId=YOUTUBE_CHANNEL_ID,
+                channelId=os.environ["NILESHYT_CHANNEL_ID"],
                 eventType="live",
                 type="video",
                 maxResults=1
             )
-            res = await self.bot.loop.run_in_executor(None, req.execute)
+            res = req.execute()
 
             if not res["items"]:
+                print("🔍 No live stream found")
                 return
 
             self.video_id = res["items"][0]["id"]["videoId"]
@@ -76,7 +107,7 @@ class LiveChatForwarder(commands.Cog):
                 part="liveStreamingDetails",
                 id=self.video_id
             )
-            res2 = await self.bot.loop.run_in_executor(None, req2.execute)
+            res2 = req2.execute()
 
             details = res2["items"][0]["liveStreamingDetails"]
 
@@ -86,21 +117,24 @@ class LiveChatForwarder(commands.Cog):
             )
 
             self.next_page_token = None
-            print("✅ Live stream connected")
+            self.live_found_once = True
+
+            print("✅ Live found — clip listening started")
 
             if not self.read_chat.is_running():
                 self.read_chat.start()
 
         except Exception as e:
-            print("🔥 Live detect error:", e)
+            print("🔥 Live find error:", e)
 
-    # 💬 READ LIVE CHAT
+    # ===================== READ CHAT =====================
+
     @tasks.loop(seconds=5)
     async def read_chat(self):
-        try:
-            if not self.live_chat_id:
-                return
+        if not self.clip_active or not self.live_chat_id:
+            return
 
+        try:
             req = self.youtube.liveChatMessages().list(
                 liveChatId=self.live_chat_id,
                 part="snippet,authorDetails",
@@ -118,15 +152,12 @@ class LiveChatForwarder(commands.Cog):
 
             for msg in res["items"]:
                 text = msg["snippet"]["displayMessage"]
-                author_details = msg["authorDetails"]
+                author = msg["authorDetails"]
 
                 if not text.lower().startswith("!clip"):
                     continue
 
-                if not (
-                    author_details.get("isChatOwner")
-                    or author_details.get("isChatModerator")
-                ):
+                if not (author.get("isChatOwner") or author.get("isChatModerator")):
                     continue
 
                 msg_time = datetime.fromisoformat(
@@ -139,16 +170,18 @@ class LiveChatForwarder(commands.Cog):
                 clip_name = text[5:].strip() or "No name"
                 clip_url = f"https://www.youtube.com/watch?v={self.video_id}&t={seconds}s"
 
-                channel = self.bot.get_channel(int(LIVE_NOTIFY_CHANNEL))
+                channel = self.bot.get_channel(
+                    int(os.environ["LIVE_NOTIFY_CHANNEL"])
+                )
                 if not channel:
                     continue
 
-                role = "Owner" if author_details.get("isChatOwner") else "Moderator"
+                role = "Owner" if author.get("isChatOwner") else "Moderator"
 
                 embed = discord.Embed(
                     title="🎬 Clip Requested",
                     description=(
-                        f"👤 **User** : {author_details['displayName']} ({role})\n"
+                        f"👤 **User** : {author['displayName']} ({role})\n"
                         f"🏷️ **Clip Name** : {clip_name}\n"
                         f"⏱️ **Timestamp** : `{timestamp}`"
                     ),
@@ -158,29 +191,31 @@ class LiveChatForwarder(commands.Cog):
 
                 embed.set_footer(text="YouTube Live Clip System")
 
-                await channel.send(
-                    embed=embed,
-                    view=ClipView(clip_url)
-                )
+                await channel.send(embed=embed, view=ClipView(clip_url))
 
         except googleapiclient.errors.HttpError:
-            print("⚠️ Live ended, resetting...")
-            self._reset_live_state()
+            print("⚠️ Live ended — waiting for manual recheck")
+            self._reset_live_state(full=False)
 
         except Exception as e:
             print("🔥 Chat error:", e)
-            self._reset_live_state()
+            self._reset_live_state(full=False)
 
-    # ♻️ RESET
-    def _reset_live_state(self):
+    # ===================== RESET =====================
+
+    def _reset_live_state(self, full=False):
         self.live_chat_id = None
         self.video_id = None
         self.stream_start_time = None
         self.next_page_token = None
 
+        if full:
+            self.live_found_once = False
+
         if self.read_chat.is_running():
             self.read_chat.stop()
 
-# 🔌 SETUP
+# ===================== LOAD COG =====================
+
 async def setup(bot):
     await bot.add_cog(LiveChatForwarder(bot))

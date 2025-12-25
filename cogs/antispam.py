@@ -1,13 +1,9 @@
 import discord
 from discord.ext import commands
-import os
 import asyncio
 import time
 from collections import defaultdict
 from datetime import timedelta
-
-# ================= ENV =================
-EMBED_IMAGE_URL = os.getenv("EMBED_IMAGE_URL")
 
 # ================= SETTINGS =================
 MESSAGE_LIMIT = 5
@@ -61,7 +57,7 @@ class AntiSpam(commands.Cog):
             except:
                 pass
 
-            # ⛔ TIMEOUT (FIXED)
+            # ⛔ TIMEOUT
             try:
                 await member.timeout(
                     discord.utils.utcnow() + timedelta(seconds=TIMEOUT_SECONDS),
@@ -70,7 +66,7 @@ class AntiSpam(commands.Cog):
             except Exception as e:
                 print("❌ Timeout failed:", e)
 
-            # 📩 DM warning
+            # 📩 DM warning (NO IMAGE)
             try:
                 embed = discord.Embed(
                     title="🚫 Spamming Detected",
@@ -82,9 +78,6 @@ class AntiSpam(commands.Cog):
                     ),
                     color=discord.Color.red()
                 )
-
-                if EMBED_IMAGE_URL:
-                    embed.set_image(url=EMBED_IMAGE_URL)
 
                 await member.send(embed=embed)
             except:

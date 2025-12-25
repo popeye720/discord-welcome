@@ -4,14 +4,15 @@ import os
 import asyncio
 import time
 from collections import defaultdict
+from datetime import timedelta
 
 # ================= ENV =================
 EMBED_IMAGE_URL = os.getenv("EMBED_IMAGE_URL")
 
 # ================= SETTINGS =================
-MESSAGE_LIMIT = 5        # kitne messages
-TIME_WINDOW = 7          # seconds ke andar
-TIMEOUT_SECONDS = 300    # 5 minutes
+MESSAGE_LIMIT = 5
+TIME_WINDOW = 7
+TIMEOUT_SECONDS = 300  # 5 minutes
 
 class AntiSpam(commands.Cog):
     def __init__(self, bot):
@@ -24,19 +25,20 @@ class AntiSpam(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        user_id = message.author.id
+        member: discord.Member = message.author
+        user_id = member.id
         now = time.time()
 
-        # Store timestamps
+        # Store message timestamps
         self.user_messages[user_id].append((now, message))
 
-        # Remove old messages
+        # Cleanup old messages
         self.user_messages[user_id] = [
             (t, m) for t, m in self.user_messages[user_id]
             if now - t <= TIME_WINDOW
         ]
 
-        # Spam detected
+        # 🚨 Spam detected
         if len(self.user_messages[user_id]) >= MESSAGE_LIMIT:
             if user_id in self.locked_users:
                 return
@@ -52,25 +54,31 @@ class AntiSpam(commands.Cog):
 
             self.user_messages[user_id].clear()
 
-            # ⛔ Timeout user
+            # 🔊 VC se kick karo agar joined hai
             try:
-                await message.author.timeout(
-                    discord.utils.utcnow() + discord.timedelta(seconds=TIMEOUT_SECONDS),
-                    reason="Spamming messages"
-                )
+                if member.voice:
+                    await member.move_to(None)
             except:
                 pass
 
-            # 📩 DM Warning Embed
+            # ⛔ TIMEOUT (FIXED)
+            try:
+                await member.timeout(
+                    discord.utils.utcnow() + timedelta(seconds=TIMEOUT_SECONDS),
+                    reason="Spamming messages"
+                )
+            except Exception as e:
+                print("❌ Timeout failed:", e)
+
+            # 📩 DM warning
             try:
                 embed = discord.Embed(
                     title="🚫 Spamming Detected",
                     description=(
-                        f"Hello {message.author.mention},\n\n"
-                        "**Spamming is not allowed in this server.**\n"
-                        "You were sending messages too fast.\n\n"
-                        "⏳ **Timeout Duration:** 5 minutes\n\n"
-                        "Please follow the rules and chat responsibly."
+                        f"Hello {member.mention},\n\n"
+                        "**Spamming is not allowed in this server.**\n\n"
+                        "⏳ **Timeout:** 5 minutes\n"
+                        "🔇 You cannot chat or join VC during this time."
                     ),
                     color=discord.Color.red()
                 )
@@ -78,7 +86,7 @@ class AntiSpam(commands.Cog):
                 if EMBED_IMAGE_URL:
                     embed.set_image(url=EMBED_IMAGE_URL)
 
-                await message.author.send(embed=embed)
+                await member.send(embed=embed)
             except:
                 pass
 

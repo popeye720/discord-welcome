@@ -68,6 +68,12 @@ class Music(commands.Cog):
         if not ctx.author.voice or not ctx.author.voice.channel:
             return False
 
+        # 🔒 Stream mode block (runtime)
+        blocked_vc = getattr(self.bot, "blocked_voice_channel_id", None)
+        if blocked_vc and ctx.author.voice.channel.id == blocked_vc:
+            return True
+
+        # ENV based block (existing logic)
         return ctx.author.voice.channel.id == BLOCKED_CHANNEL_MUSIC
 
     # ---------- SPOTIFY PARSER ----------

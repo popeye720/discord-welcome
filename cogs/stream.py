@@ -1,53 +1,40 @@
-import os
 import discord
 from discord.ext import commands
+import os
 
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-class Music(commands.Cog):
+class StreamMode(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.stream_locked = False  # Lock flag to block VC joins
 
-    @commands.command(name="stream")
-    async def stream(self, ctx):
-        # Owner-only check
+    @commands.command(name="streammode")
+    async def streammode(self, ctx):
         if ctx.author.id != OWNER_ID:
-            await ctx.send("❌ Only the bot owner can use this command.")
-            return
+            return await ctx.send("❌ Only owner can enable stream mode.")
 
-        self.stream_locked = True
-        await ctx.send("🔒 Stream mode enabled — the bot will not join any voice channel.")
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.send("❌ Join a voice channel first.")
 
-    @commands.command(name="streamend")
-    async def streamend(self, ctx):
-        # Owner-only check
+        vc = ctx.author.voice.channel
+        self.bot.blocked_voice_channel_id = vc.id
+
+        # If bot is already in that VC → leave immediately
+        if ctx.voice_client and ctx.voice_client.channel.id == vc.id:
+            await ctx.voice_client.disconnect()
+
+        await ctx.send(
+            f"🔒 **Stream Mode ON**\n"
+            f"Bot will never join **{vc.name}**"
+        )
+
+    @commands.command(name="streamoff")
+    async def streamoff(self, ctx):
         if ctx.author.id != OWNER_ID:
-            await ctx.send("❌ Only the bot owner can use this command.")
-            return
+            return await ctx.send("❌ Only owner can disable stream mode.")
 
-        # User must be in a voice channel
-        if not ctx.author.voice:
-            await ctx.send("❌ You are not connected to a voice channel.")
-            return
-
-        self.stream_locked = False
-        voice_channel = ctx.author.voice.channel
-
-        # If the bot is already in a voice channel
-        if ctx.voice_client:
-            await ctx.send("ℹ️ The bot is already connected to a voice channel.")
-            return
-
-        await voice_channel.connect()
-        await ctx.send(f"✅ Stream ended — bot joined **{voice_channel.name}**")
-
-    # Prevent the bot from joining any VC while stream is locked
-    @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        if member == self.bot.user and self.stream_locked:
-            if after.channel is not None:
-                await member.move_to(None)
+        self.bot.blocked_voice_channel_id = None
+        await ctx.send("🔓 **Stream Mode OFF** — bot can join voice channels now.")
 
 async def setup(bot):
-    await bot.add_cog(Music(bot))
+    await bot.add_cog(StreamMode(bot))

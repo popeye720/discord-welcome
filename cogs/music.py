@@ -27,6 +27,10 @@ class MusicControls(discord.ui.View):
         super().__init__(timeout=None)
         self.player = player
 
+        # default loop OFF
+        if not hasattr(self.player, "loop"):
+            self.player.loop = False
+
     @discord.ui.button(label="Pause", emoji="⏸️")
     async def pause(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.player.pause(True)
@@ -42,11 +46,24 @@ class MusicControls(discord.ui.View):
         await self.player.stop()
         await interaction.response.send_message("⏭️ Skipped", ephemeral=True)
 
+    # 🔁 LOOP BUTTON
+    @discord.ui.button(label="Loop", emoji="🔁")
+    async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.player.loop = not self.player.loop
+
+        status = "ON 🔁" if self.player.loop else "OFF ❌"
+        await interaction.response.send_message(
+            f"🔁 Loop is now **{status}**",
+            ephemeral=True
+        )
+
     @discord.ui.button(label="Stop", emoji="⏹️")
     async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.player.loop = False
         await self.player.disconnect()
         await interaction.response.send_message("⏹️ Stopped & left VC", ephemeral=True)
         self.stop()
+
 
 # ================= MUSIC COG =================
 
@@ -59,6 +76,15 @@ class Music(commands.Cog):
             await ctx.send("❌ Please join a voice channel first.")
             return False
         return True
+    
+    async def temp_block_reply(self, ctx, text: str, delay: int = 3):
+        try:
+            bot_msg = await ctx.send(text)
+            await asyncio.sleep(delay)
+            await ctx.message.delete()
+            await bot_msg.delete()
+        except:
+            pass
 
     # ✅ OWNER CAN BYPASS BLOCKED CHANNEL
     def is_blocked_channel(self, ctx) -> bool:
@@ -102,17 +128,22 @@ class Music(commands.Cog):
             return []
 
         return results
+    
+    # 🔒 OWNER LOCK CHECK (Reusable)
+    def is_owner_locked(self, user_id: int) -> bool:
+        return getattr(self.bot, "owner_locked", False) and user_id != OWNER_ID
 
     # ---------------- PLAY ----------------
     @commands.command()
     async def play(self, ctx, *, query: str):
 
         # 🔒 OWNER JOIN LOCK CHECK
-        if getattr(self.bot, "owner_locked", False):
-            if ctx.author.id != OWNER_ID:
-                return await ctx.send(
-                    "🚫 Bot is currently locked by the owner."
-                )
+        if self.is_owner_locked(ctx.author.id):
+            return await self.temp_block_reply(
+                ctx,
+                "🚫 Bot is currently locked by the owner."
+            )
+
 
         if not await self.ensure_voice(ctx):
             return
@@ -168,15 +199,32 @@ class Music(commands.Cog):
     # ---------------- SKIP ----------------
     @commands.command()
     async def skip(self, ctx):
+
+        if self.is_owner_locked(ctx.author.id):
+            return await self.temp_block_reply(
+                ctx,
+                "🚫 Bot is currently locked by the owner."
+            )
+
         player = ctx.voice_client
         if not player:
             return await ctx.send("❌ Nothing is playing.")
+
         await player.stop()
         await ctx.send("⏭️ Skipped.")
+
 
     # ---------------- STOP ----------------
     @commands.command()
     async def stop(self, ctx):
+
+        if self.is_owner_locked(ctx.author.id):
+            return await self.temp_block_reply(
+                ctx,
+                "🚫 Bot is currently locked by the owner."
+            )
+
+
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
             await ctx.send("⏹️ Stopped & left voice channel.")
@@ -185,12 +233,21 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
+
+        # 🔁 LOOP CURRENT SONG
+        if getattr(player, "loop", False):
+            await player.play(payload.track)
+            return
+
+        # ▶️ PLAY NEXT FROM QUEUE
         if not player.queue.is_empty:
             await player.play(player.queue.get())
         else:
             await asyncio.sleep(10)
             if not player.playing:
                 await player.disconnect()
+
+
 
 async def setup(bot):
     await bot.add_cog(Music(bot))

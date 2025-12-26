@@ -8,7 +8,7 @@ OWNER_ID = int(os.getenv("OWNER_ID"))
 class JoinToCreate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.temp_channels = set()  # store temporary VC ids
+        self.temp_channels = {}  # vc_id : owner_id
 
     # ================= LISTENER =================
 
@@ -22,7 +22,6 @@ class JoinToCreate(commands.Cog):
 
             channel_name = f"{member.name}'s VC"
 
-            # 🔒 Private VC permissions
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(
                     connect=False,
@@ -43,13 +42,26 @@ class JoinToCreate(commands.Cog):
             )
 
             await member.move_to(new_channel)
-            self.temp_channels.add(new_channel.id)
 
-        # 🔴 Delete empty temporary channels
+            # ✅ save VC owner
+            self.temp_channels[new_channel.id] = member.id
+
+        # 🔴 OWNER LEFT → FORCE DELETE VC
         if before.channel and before.channel.id in self.temp_channels:
-            if len(before.channel.members) == 0:
-                await before.channel.delete()
-                self.temp_channels.remove(before.channel.id)
+            owner_id = self.temp_channels[before.channel.id]
+
+            # agar owner hi VC chhod ke gaya
+            if member.id == owner_id:
+                vc = before.channel
+
+                # 🔌 disconnect all members
+                for m in vc.members:
+                    await m.move_to(None)
+
+                # ❌ delete channel
+                await vc.delete()
+
+                del self.temp_channels[vc.id]
 
     # ================= VC ALLOW =================
 
@@ -83,14 +95,12 @@ class JoinToCreate(commands.Cog):
         if vc.id not in self.temp_channels:
             return await ctx.send("❌ This is not a temporary voice channel.")
 
-        # 🚫 Do not remove owner
+        # 🚫 Do not remove server owner
         if member.id == OWNER_ID:
             return await ctx.send("❌ You cannot remove the server owner from the voice channel.")
 
-        # ❌ Remove permissions
         await vc.set_permissions(member, overwrite=None)
 
-        # 🔄 Disconnect user if inside VC
         if member.voice and member.voice.channel == vc:
             await member.move_to(None)
 

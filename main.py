@@ -71,6 +71,7 @@ async def main():
     await bot.load_extension("cogs.stream")
     await bot.load_extension("cogs.antispam")
     await bot.load_extension("cogs.moderation")
+    await bot.load_extension("cogs.joinleave")
     await bot.start(TOKEN)
 
 asyncio.run(main())

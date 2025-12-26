@@ -26,6 +26,22 @@ def is_locked(interaction: discord.Interaction) -> bool:
     bot = interaction.client
     return getattr(bot, "owner_locked", False) and interaction.user.id != OWNER_ID
 
+# ================= AUTO DELETE (ONLY X USER) =================
+
+async def auto_delete_xuser(ctx, bot_text: str, delay: int = 3):
+    try:
+        bot_msg = await ctx.send(bot_text)
+
+        # 👑 OWNER SAFE
+        if ctx.author.id == OWNER_ID:
+            return
+
+        await asyncio.sleep(delay)
+        await ctx.message.delete()
+        await bot_msg.delete()
+    except:
+        pass
+
 # ================= MUSIC CONTROLS =================
 
 class MusicControls(discord.ui.View):
@@ -181,7 +197,11 @@ class Music(commands.Cog):
             return
 
         if self.is_blocked_channel(ctx):
-            return await ctx.send("🚫 Music playback is disabled in this VC.")
+            return await auto_delete_xuser(
+                ctx,
+                "🚫 Music playback is disabled in this VC.",
+                delay=3
+            )
 
         player: wavelink.Player = ctx.voice_client
         if not player:

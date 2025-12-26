@@ -5,16 +5,19 @@ import asyncio
 
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# -------- TEMP REPLY (AUTO DELETE) --------
-async def temp_reply(ctx, text: str, delay: int = 3):
+# ================= AUTO DELETE HELPER =================
+
+async def auto_delete_pair(ctx, bot_text: str, delay: int = 3):
     try:
-        bot_msg = await ctx.send(text)
+        bot_msg = await ctx.send(bot_text)
         await asyncio.sleep(delay)
-        await ctx.message.delete()   # user msg
-        await bot_msg.delete()       # bot msg
+        await ctx.message.delete()
+        await bot_msg.delete()
     except:
         pass
 
+
+# ================= STREAM MODE COG =================
 
 class StreamMode(commands.Cog):
     def __init__(self, bot):
@@ -24,54 +27,49 @@ class StreamMode(commands.Cog):
     async def streammode(self, ctx):
 
         if ctx.author.id != OWNER_ID:
-            return await temp_reply(
+            return await auto_delete_pair(
                 ctx,
                 "❌ Only owner can enable stream mode.",
-                3
+                delay=3
             )
 
         if not ctx.author.voice or not ctx.author.voice.channel:
-            return await temp_reply(
+            return await auto_delete_pair(
                 ctx,
                 "❌ Join a voice channel first.",
-                3
+                delay=3
             )
 
         vc = ctx.author.voice.channel
         self.bot.blocked_voice_channel_id = vc.id
 
-        # If bot is already in that VC → leave
+        # If bot already in that VC → leave
         if ctx.voice_client and ctx.voice_client.channel.id == vc.id:
             await ctx.voice_client.disconnect()
 
-        bot_msg = await ctx.send(
-            f"🔒 **Stream Mode ON**\n"
-            f"Bot will never join **{vc.name}**"
+        await auto_delete_pair(
+            ctx,
+            f"🔒 **Stream Mode ON**\nBot will never join **{vc.name}**",
+            delay=5
         )
-
-        await asyncio.sleep(4)
-        await ctx.message.delete()
-        await bot_msg.delete()
 
     @commands.command(name="streamoff")
     async def streamoff(self, ctx):
 
         if ctx.author.id != OWNER_ID:
-            return await temp_reply(
+            return await auto_delete_pair(
                 ctx,
                 "❌ Only owner can disable stream mode.",
-                3
+                delay=3
             )
 
         self.bot.blocked_voice_channel_id = None
 
-        bot_msg = await ctx.send(
-            "🔓 **Stream Mode OFF** — bot can join voice channels now."
+        await auto_delete_pair(
+            ctx,
+            "🔓 **Stream Mode OFF** — bot can join voice channels now.",
+            delay=5
         )
-
-        await asyncio.sleep(4)
-        await ctx.message.delete()
-        await bot_msg.delete()
 
 
 async def setup(bot):

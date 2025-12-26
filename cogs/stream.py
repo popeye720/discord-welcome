@@ -11,7 +11,7 @@ async def auto_delete_xuser(ctx, bot_text: str, delay: int = 3):
     try:
         bot_msg = await ctx.send(bot_text)
 
-        # 👑 OWNER SAFE — kuch delete nahi hoga
+        # 👑 OWNER SAFE
         if ctx.author.id == OWNER_ID:
             return
 
@@ -27,6 +27,8 @@ async def auto_delete_xuser(ctx, bot_text: str, delay: int = 3):
 class StreamMode(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # 🔎 track stream mode state
+        self.bot.streammode_active = False
 
     @commands.command(name="streammode")
     async def streammode(self, ctx):
@@ -45,6 +47,7 @@ class StreamMode(commands.Cog):
 
         vc = ctx.author.voice.channel
         self.bot.blocked_voice_channel_id = vc.id
+        self.bot.streammode_active = True   # ✅ ACTIVE
 
         # bot already VC me ho to leave
         if ctx.voice_client and ctx.voice_client.channel.id == vc.id:
@@ -65,8 +68,16 @@ class StreamMode(commands.Cog):
                 delay=3
             )
 
-        # 👑 OWNER
+        # ❗ STREAM MODE ACTIVE HI NAHI
+        if not getattr(self.bot, "streammode_active", False):
+            return await ctx.send(
+                "⚠️ Stream Mode is **not active**."
+            )
+
+        # 👑 OWNER — TURN OFF
         self.bot.blocked_voice_channel_id = None
+        self.bot.streammode_active = False  # ❌ INACTIVE
+
         await ctx.send(
             "🔓 **Stream Mode OFF** — bot can join voice channels now."
         )

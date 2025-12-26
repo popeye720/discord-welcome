@@ -10,6 +10,9 @@ MESSAGE_LIMIT = 5
 TIME_WINDOW = 7
 TIMEOUT_SECONDS = 300  # 5 minutes
 
+# OWNER_ID already set in shared variable
+OWNER_ID = int(__import__("os").environ.get("OWNER_ID", 0))
+
 class AntiSpam(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -23,6 +26,19 @@ class AntiSpam(commands.Cog):
 
         member: discord.Member = message.author
         user_id = member.id
+
+        # ✅ CHANGE 1: OWNER KO IGNORE
+        if user_id == OWNER_ID:
+            return
+
+        # ✅ CHANGE 2: timeout ke baad aane wale msgs bhi delete
+        if user_id in self.locked_users:
+            try:
+                await message.delete()
+            except:
+                pass
+            return
+
         now = time.time()
 
         # Store message timestamps
@@ -36,12 +52,9 @@ class AntiSpam(commands.Cog):
 
         # 🚨 Spam detected
         if len(self.user_messages[user_id]) >= MESSAGE_LIMIT:
-            if user_id in self.locked_users:
-                return
-
             self.locked_users.add(user_id)
 
-            # 🧹 Delete spam messages
+            # 🧹 Delete ALL collected spam messages
             for _, msg in self.user_messages[user_id]:
                 try:
                     await msg.delete()
@@ -50,7 +63,7 @@ class AntiSpam(commands.Cog):
 
             self.user_messages[user_id].clear()
 
-            # 🔊 VC se kick karo agar joined hai
+            # 🔊 VC se kick
             try:
                 if member.voice:
                     await member.move_to(None)
@@ -66,7 +79,7 @@ class AntiSpam(commands.Cog):
             except Exception as e:
                 print("❌ Timeout failed:", e)
 
-            # 📩 DM warning (NO IMAGE)
+            # 📩 DM warning
             try:
                 embed = discord.Embed(
                     title="🚫 Spamming Detected",
@@ -78,7 +91,6 @@ class AntiSpam(commands.Cog):
                     ),
                     color=discord.Color.red()
                 )
-
                 await member.send(embed=embed)
             except:
                 pass

@@ -224,6 +224,7 @@ class Music(commands.Cog):
 
             if player.playing or not player.queue.is_empty:
                 player.queue.put(track)
+                await ctx.send(f"📥 Added to queue: **{track.title}**")
             else:
                 await player.play(track)
                 await ctx.send(

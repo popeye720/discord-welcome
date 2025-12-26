@@ -5,12 +5,13 @@ import asyncio
 
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
+# -------- TEMP REPLY (AUTO DELETE) --------
 async def temp_reply(ctx, text: str, delay: int = 3):
     try:
         bot_msg = await ctx.send(text)
         await asyncio.sleep(delay)
-        await ctx.message.delete()
-        await bot_msg.delete()
+        await ctx.message.delete()   # user msg
+        await bot_msg.delete()       # bot msg
     except:
         pass
 
@@ -25,7 +26,7 @@ class StreamMode(commands.Cog):
         if ctx.author.id != OWNER_ID:
             return await temp_reply(
                 ctx,
-                "❌ Only **OWNER** can enable stream mode.",
+                "❌ Only owner can enable stream mode.",
                 3
             )
 
@@ -39,17 +40,18 @@ class StreamMode(commands.Cog):
         vc = ctx.author.voice.channel
         self.bot.blocked_voice_channel_id = vc.id
 
+        # If bot is already in that VC → leave
         if ctx.voice_client and ctx.voice_client.channel.id == vc.id:
             await ctx.voice_client.disconnect()
 
-        msg = await ctx.send(
+        bot_msg = await ctx.send(
             f"🔒 **Stream Mode ON**\n"
             f"Bot will never join **{vc.name}**"
         )
 
         await asyncio.sleep(4)
-        await msg.delete()
         await ctx.message.delete()
+        await bot_msg.delete()
 
     @commands.command(name="streamoff")
     async def streamoff(self, ctx):
@@ -57,16 +59,19 @@ class StreamMode(commands.Cog):
         if ctx.author.id != OWNER_ID:
             return await temp_reply(
                 ctx,
-                "❌ Only **OWNER** can disable stream mode.",
+                "❌ Only owner can disable stream mode.",
                 3
             )
 
         self.bot.blocked_voice_channel_id = None
 
-        msg = await ctx.send("🔓 **Stream Mode OFF** — bot can join voice channels now.")
+        bot_msg = await ctx.send(
+            "🔓 **Stream Mode OFF** — bot can join voice channels now."
+        )
+
         await asyncio.sleep(4)
-        await msg.delete()
         await ctx.message.delete()
+        await bot_msg.delete()
 
 
 async def setup(bot):

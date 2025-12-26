@@ -10,7 +10,6 @@ import asyncio
 
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 BLOCKED_CHANNEL_MUSIC = int(os.getenv("BLOCKED_CHANNEL_MUSIC", "0"))
-MUSIC_CHANNEL = int(os.getenv("MUSIC_CHANNEL", "0"))  # 👈 AUTO JOIN VC
 
 # ================= SPOTIFY SETUP =================
 
@@ -55,28 +54,6 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 🔥 AUTO JOIN TEJAS MUSIC WHEN BOT IS READY
-    @commands.Cog.listener()
-    async def on_ready(self):
-        if MUSIC_CHANNEL == 0:
-            print("❌ MUSIC_CHANNEL ENV not set")
-            return
-
-        channel = self.bot.get_channel(MUSIC_CHANNEL)
-
-        if not channel or not isinstance(channel, discord.VoiceChannel):
-            print("❌ Invalid MUSIC_CHANNEL ID")
-            return
-
-        if self.bot.voice_clients:
-            return  # already connected
-
-        try:
-            await channel.connect(cls=wavelink.Player)
-            print(f"🎵 Auto-joined voice channel: {channel.name}")
-        except Exception as e:
-            print(f"❌ Failed to auto-join VC: {e}")
-
     async def ensure_voice(self, ctx):
         if not ctx.author.voice:
             await ctx.send("❌ Please join a voice channel first.")
@@ -91,15 +68,18 @@ class Music(commands.Cog):
         if not ctx.author.voice or not ctx.author.voice.channel:
             return False
 
+        # 🔒 Stream mode block (runtime)
         blocked_vc = getattr(self.bot, "blocked_voice_channel_id", None)
         if blocked_vc and ctx.author.voice.channel.id == blocked_vc:
             return True
 
+        # ENV based block (existing logic)
         return ctx.author.voice.channel.id == BLOCKED_CHANNEL_MUSIC
 
     # ---------- SPOTIFY PARSER ----------
     def spotify_to_queries(self, query: str) -> list[str]:
         results = []
+
         try:
             if "open.spotify.com/track" in query:
                 track = sp.track(query)
@@ -117,6 +97,7 @@ class Music(commands.Cog):
                 if search["tracks"]["items"]:
                     track = search["tracks"]["items"][0]
                     results.append(f"{track['name']} {track['artists'][0]['name']}")
+
         except Exception:
             return []
 
@@ -129,8 +110,11 @@ class Music(commands.Cog):
         if not await self.ensure_voice(ctx):
             return
 
+        # 🚫 Blocked channel check (OWNER bypass inside function)
         if self.is_blocked_channel(ctx):
-            return await ctx.send("🚫 Music playback is disabled in this voice channel.")
+            return await ctx.send(
+                "🚫 Music playback is disabled in this voice channel."
+            )
 
         player: wavelink.Player = ctx.voice_client
         if not player:

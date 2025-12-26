@@ -8,7 +8,7 @@ OWNER_ID = int(os.getenv("OWNER_ID"))
 class JoinToCreate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.temp_channels = {}  # vc_id : owner_id
+        self.temp_channels = {}  # vc_id : creator_id
 
     # ================= LISTENER =================
 
@@ -43,16 +43,20 @@ class JoinToCreate(commands.Cog):
 
             await member.move_to(new_channel)
 
-            # ✅ save VC owner
+            # ✅ save VC creator
             self.temp_channels[new_channel.id] = member.id
 
-        # 🔴 OWNER LEFT → FORCE DELETE VC
+        # 🔴 CREATOR LEFT → CHECK DELETE CONDITIONS
         if before.channel and before.channel.id in self.temp_channels:
-            owner_id = self.temp_channels[before.channel.id]
+            creator_id = self.temp_channels[before.channel.id]
 
-            # agar owner hi VC chhod ke gaya
-            if member.id == owner_id:
+            # agar creator hi VC chhod ke gaya
+            if member.id == creator_id:
                 vc = before.channel
+
+                # ✅ IF SERVER OWNER IS PRESENT → DO NOTHING
+                if any(m.id == OWNER_ID for m in vc.members):
+                    return
 
                 # 🔌 disconnect all members
                 for m in vc.members:
@@ -60,7 +64,6 @@ class JoinToCreate(commands.Cog):
 
                 # ❌ delete channel
                 await vc.delete()
-
                 del self.temp_channels[vc.id]
 
     # ================= VC ALLOW =================
@@ -75,12 +78,7 @@ class JoinToCreate(commands.Cog):
         if vc.id not in self.temp_channels:
             return await ctx.send("❌ This is not a temporary voice channel.")
 
-        await vc.set_permissions(
-            member,
-            connect=True,
-            speak=True
-        )
-
+        await vc.set_permissions(member, connect=True, speak=True)
         await ctx.send(f"✅ **{member.mention}** has been granted VC access.")
 
     # ================= VC REMOVE =================

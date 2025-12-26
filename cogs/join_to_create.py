@@ -23,10 +23,7 @@ class JoinToCreate(commands.Cog):
             channel_name = f"{member.name}'s VC"
 
             overwrites = {
-                guild.default_role: discord.PermissionOverwrite(
-                    connect=False,
-                    speak=False
-                ),
+                guild.default_role: discord.PermissionOverwrite(connect=False, speak=False),
                 member: discord.PermissionOverwrite(
                     connect=True,
                     speak=True,
@@ -43,26 +40,23 @@ class JoinToCreate(commands.Cog):
 
             await member.move_to(new_channel)
 
-            # ✅ save VC creator
             self.temp_channels[new_channel.id] = member.id
 
-        # 🔴 CREATOR LEFT → CHECK DELETE CONDITIONS
+        # 🔴 CHECK TEMP VC DELETE CONDITIONS
         if before.channel and before.channel.id in self.temp_channels:
-            creator_id = self.temp_channels[before.channel.id]
+            vc = before.channel
+            creator_id = self.temp_channels[vc.id]
 
-            # agar creator hi VC chhod ke gaya
-            if member.id == creator_id:
-                vc = before.channel
+            members_ids = [m.id for m in vc.members]
 
-                # ✅ IF SERVER OWNER IS PRESENT → DO NOTHING
-                if any(m.id == OWNER_ID for m in vc.members):
-                    return
+            # ❌ creator bhi nahi hai AND ❌ OWNER_ID bhi nahi hai
+            if creator_id not in members_ids and OWNER_ID not in members_ids:
 
-                # 🔌 disconnect all members
+                # 🔌 disconnect all (safety)
                 for m in vc.members:
                     await m.move_to(None)
 
-                # ❌ delete channel
+                # ❌ delete VC
                 await vc.delete()
                 del self.temp_channels[vc.id]
 
@@ -74,7 +68,6 @@ class JoinToCreate(commands.Cog):
             return await ctx.send("❌ You are not connected to a voice channel.")
 
         vc = ctx.author.voice.channel
-
         if vc.id not in self.temp_channels:
             return await ctx.send("❌ This is not a temporary voice channel.")
 
@@ -89,11 +82,9 @@ class JoinToCreate(commands.Cog):
             return await ctx.send("❌ You are not connected to a voice channel.")
 
         vc = ctx.author.voice.channel
-
         if vc.id not in self.temp_channels:
             return await ctx.send("❌ This is not a temporary voice channel.")
 
-        # 🚫 Do not remove server owner
         if member.id == OWNER_ID:
             return await ctx.send("❌ You cannot remove the server owner from the voice channel.")
 

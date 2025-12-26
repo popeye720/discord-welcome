@@ -8,6 +8,7 @@ OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 class JoinLeave(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.bot.owner_locked = False  # 🔒 default
 
     # ---------- OWNER ONLY ----------
     async def cog_check(self, ctx: commands.Context):
@@ -19,35 +20,36 @@ class JoinLeave(commands.Cog):
     # ---------------- JOIN ----------------
     @commands.command()
     async def join(self, ctx, channel_id: int = None):
-        # 🔹 Case 1: !join (no channel id)
+
         if channel_id is None:
             if not ctx.author.voice or not ctx.author.voice.channel:
                 return await ctx.send("❌ You must be in a voice channel.")
-
             channel = ctx.author.voice.channel
-
-        # 🔹 Case 2: !join <channel_id>
         else:
             channel = ctx.guild.get_channel(channel_id)
             if not channel or not isinstance(channel, discord.VoiceChannel):
                 return await ctx.send("❌ Invalid voice channel ID.")
 
-        # Join / Move
         if ctx.voice_client:
             await ctx.voice_client.move_to(channel)
         else:
             await channel.connect(cls=wavelink.Player)
 
-        await ctx.send(f"✅ Joined **{channel.name}**")
+        # 🔒 LOCK MUSIC FOR OWNER ONLY
+        self.bot.owner_locked = True
+
+        await ctx.send(f"🔒 Joined **{channel.name}** (Music locked for OWNER only)")
 
     # ---------------- LEAVE ----------------
     @commands.command()
     async def leave(self, ctx):
-        if not ctx.voice_client:
-            return await ctx.send("❌ I am not in any voice channel.")
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
 
-        await ctx.voice_client.disconnect()
-        await ctx.send("👋 Left the voice channel.")
+        # 🔓 UNLOCK MUSIC
+        self.bot.owner_locked = False
+
+        await ctx.send("👋 Left voice channel (Music unlocked)")
 
 async def setup(bot):
     await bot.add_cog(JoinLeave(bot))

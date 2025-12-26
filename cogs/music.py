@@ -107,6 +107,13 @@ class Music(commands.Cog):
     @commands.command()
     async def play(self, ctx, *, query: str):
 
+        # 🔒 OWNER JOIN LOCK CHECK
+        if getattr(self.bot, "owner_locked", False):
+            if ctx.author.id != OWNER_ID:
+                return await ctx.send(
+                    "🚫 Bot is currently locked by the owner. Only OWNER can play music right now."
+                )
+
         if not await self.ensure_voice(ctx):
             return
 
@@ -146,6 +153,7 @@ class Music(commands.Cog):
 
         if len(search_queries) > 1:
             await ctx.send(f"📥 Added **{len(search_queries)}** tracks to queue.")
+
 
     # ---------------- QUEUE ----------------
     @commands.command()

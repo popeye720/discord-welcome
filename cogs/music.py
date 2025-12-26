@@ -111,7 +111,7 @@ class Music(commands.Cog):
         if getattr(self.bot, "owner_locked", False):
             if ctx.author.id != OWNER_ID:
                 return await ctx.send(
-                    "🚫 Bot is currently locked by the owner. Only OWNER can play music right now."
+                    "🚫 Bot is currently locked by the owner."
                 )
 
         if not await self.ensure_voice(ctx):

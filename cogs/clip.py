@@ -7,8 +7,12 @@ import time
 import asyncio
 from datetime import datetime, timezone
 
-OWNER_ID = int(os.getenv("OWNER_ID"))
+OWNER_ID = os.getenv("OWNER_ID")
 
+if OWNER_ID is None:
+    raise RuntimeError("❌ OWNER_ID environment variable is not set")
+
+OWNER_ID = int(OWNER_ID)
 
 class Clip(commands.Cog):
     def __init__(self, bot):

@@ -1,43 +1,46 @@
 import discord
 from discord.ext import commands
-import wavelink
 
 class JoinLeave(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ---------- OWNER ONLY (AUTO DETECT) ----------
+    # -------- OWNER ONLY CHECK --------
     async def cog_check(self, ctx: commands.Context):
-        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.send("Only the server owner can use this command.")
+        if not ctx.guild:
             return False
+
+        if ctx.author.id != ctx.guild.owner_id:
+            await ctx.send("❌ Only server owner can use this command.")
+            return False
+
         return True
 
-    # ---------------- JOIN VC (24/7) ----------------
+    # -------- JOIN VOICE CHANNEL --------
     @commands.command(name="joinvc")
     async def joinvc(self, ctx, channel_id: int):
         channel = ctx.guild.get_channel(channel_id)
 
         if not channel or not isinstance(channel, discord.VoiceChannel):
-            return await ctx.send("Invalid voice channel ID.")
+            return await ctx.send("❌ Invalid voice channel ID.")
 
-        if ctx.voice_client:
-            await ctx.voice_client.move_to(channel)
+        if ctx.guild.voice_client:
+            await ctx.guild.voice_client.move_to(channel)
         else:
-            await channel.connect(cls=wavelink.Player)
+            await channel.connect()
 
-        await ctx.send(
-            f"Bot has joined {channel.name} and will stay connected 24/7."
-        )
+        await ctx.send(f"✅ Joined voice channel: **{channel.name}**")
 
-    # ---------------- LEAVE VC ----------------
+    # -------- LEAVE VOICE CHANNEL --------
     @commands.command(name="leavevc")
     async def leavevc(self, ctx):
-        if not ctx.voice_client:
-            return await ctx.send("The bot is not connected to any voice channel.")
+        vc = ctx.guild.voice_client
 
-        await ctx.voice_client.disconnect()
-        await ctx.send("Bot has left the voice channel.")
+        if not vc:
+            return await ctx.send("❌ Bot is not connected to any voice channel.")
+
+        await vc.disconnect()
+        await ctx.send("✅ Left the voice channel.")
 
 async def setup(bot):
     await bot.add_cog(JoinLeave(bot))

@@ -5,48 +5,39 @@ import wavelink
 class JoinLeave(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.bot.owner_locked = False  # 🔒 default
 
     # ---------- OWNER ONLY (AUTO DETECT) ----------
     async def cog_check(self, ctx: commands.Context):
         if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.send("🚫 This command is **Server Owner Only**.")
+            await ctx.send("Only the server owner can use this command.")
             return False
         return True
 
-    # ---------------- JOIN ----------------
-    @commands.command()
-    async def join(self, ctx, channel_id: int = None):
+    # ---------------- JOIN VC (24/7) ----------------
+    @commands.command(name="joinvc")
+    async def joinvc(self, ctx, channel_id: int):
+        channel = ctx.guild.get_channel(channel_id)
 
-        if channel_id is None:
-            if not ctx.author.voice or not ctx.author.voice.channel:
-                return await ctx.send("❌ You must be in a voice channel.")
-            channel = ctx.author.voice.channel
-        else:
-            channel = ctx.guild.get_channel(channel_id)
-            if not channel or not isinstance(channel, discord.VoiceChannel):
-                return await ctx.send("❌ Invalid voice channel ID.")
+        if not channel or not isinstance(channel, discord.VoiceChannel):
+            return await ctx.send("Invalid voice channel ID.")
 
         if ctx.voice_client:
             await ctx.voice_client.move_to(channel)
         else:
             await channel.connect(cls=wavelink.Player)
 
-        # 🔒 LOCK MUSIC FOR OWNER ONLY
-        self.bot.owner_locked = True
+        await ctx.send(
+            f"Bot has joined {channel.name} and will stay connected 24/7."
+        )
 
-        await ctx.send(f"🔒 Joined **{channel.name}** (Music locked for OWNER only)")
+    # ---------------- LEAVE VC ----------------
+    @commands.command(name="leavevc")
+    async def leavevc(self, ctx):
+        if not ctx.voice_client:
+            return await ctx.send("The bot is not connected to any voice channel.")
 
-    # ---------------- LEAVE ----------------
-    @commands.command()
-    async def leave(self, ctx):
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-
-        # 🔓 UNLOCK MUSIC
-        self.bot.owner_locked = False
-
-        await ctx.send("👋 Left voice channel (Music unlocked)")
+        await ctx.voice_client.disconnect()
+        await ctx.send("Bot has left the voice channel.")
 
 async def setup(bot):
     await bot.add_cog(JoinLeave(bot))

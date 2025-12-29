@@ -1,19 +1,19 @@
-import os
 import discord
 from discord.ext import commands
-
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 class DMAll(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # 👑 OWNER CHECK (AUTO)
+    def is_owner(self, ctx):
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+
     # ------------------ SINGLE DM ------------------
     @commands.command(name="dm")
     async def dm_user(self, ctx, user: discord.User, *, message: str):
-        # Owner only
-        if ctx.author.id != OWNER_ID:
-            return await ctx.send("❌ Only the bot owner can use this command.")
+        if not self.is_owner(ctx):
+            return await ctx.send("❌ Only the **server owner** can use this command.")
 
         try:
             await user.send(message)
@@ -26,9 +26,8 @@ class DMAll(commands.Cog):
     # ------------------ DM ALL ------------------
     @commands.command(name="dmall")
     async def dm_all(self, ctx, *, message: str):
-        # Owner only
-        if ctx.author.id != OWNER_ID:
-            return await ctx.send("❌ Only the bot owner can use this command.")
+        if not self.is_owner(ctx):
+            return await ctx.send("❌ Only the **server owner** can use this command.")
 
         await ctx.send("📨 Sending DMs to all members...")
 

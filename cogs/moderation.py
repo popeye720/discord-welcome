@@ -1,23 +1,20 @@
 import discord
 from discord.ext import commands
 from datetime import timedelta
-import os
 
-OWNER_ID = int(os.getenv("OWNER_ID", 0))
-
-class Moderation(commands.Cog):
+class OwnerModeration(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ---------- OWNER CHECK ----------
+    # ---------- OWNER CHECK (SERVER OWNER) ----------
     async def cog_check(self, ctx: commands.Context):
-        if ctx.author.id != OWNER_ID:
-            await ctx.send("🚫 This command is **Owner Only**.")
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            await ctx.send("This command can only be used by the server owner.")
             return False
         return True
 
-    # ---------- EMBED BUILDER ----------
-    def dm_embed(self, title, description, guild, color):
+    # ---------- DM EMBED BUILDER ----------
+    def dm_embed(self, title: str, description: str, guild: discord.Guild, color: discord.Color):
         embed = discord.Embed(
             title=title,
             description=description,
@@ -29,15 +26,14 @@ class Moderation(commands.Cog):
 
     # ---------------- KICK ----------------
     @commands.command()
-    async def kick(self, ctx, member: discord.Member = None, *, reason="No reason provided"):
+    async def kick(self, ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
         if not member:
-            return await ctx.send("❌ Usage: `!kick @user reason`")
+            return await ctx.send("Usage: !kick @user <reason>")
 
-        # DM Embed
         try:
             embed = self.dm_embed(
-                "👢 You were kicked",
-                f"**Reason:** {reason}",
+                "You were kicked from the server",
+                f"Reason: {reason}",
                 ctx.guild,
                 discord.Color.orange()
             )
@@ -46,19 +42,18 @@ class Moderation(commands.Cog):
             pass
 
         await member.kick(reason=reason)
-        await ctx.send(f"✅ **{member}** has been kicked.")
+        await ctx.send(f"{member} has been kicked.")
 
     # ---------------- BAN ----------------
     @commands.command()
-    async def ban(self, ctx, member: discord.Member = None, *, reason="No reason provided"):
+    async def ban(self, ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
         if not member:
-            return await ctx.send("❌ Usage: `!ban @user reason`")
+            return await ctx.send("Usage: !ban @user <reason>")
 
-        # DM Embed
         try:
             embed = self.dm_embed(
-                "🔨 You were banned",
-                f"**Reason:** {reason}",
+                "You were banned from the server",
+                f"Reason: {reason}",
                 ctx.guild,
                 discord.Color.red()
             )
@@ -67,21 +62,27 @@ class Moderation(commands.Cog):
             pass
 
         await member.ban(reason=reason)
-        await ctx.send(f"✅ **{member}** has been banned.")
+        await ctx.send(f"{member} has been banned.")
 
     # ---------------- TIMEOUT ----------------
     @commands.command()
-    async def timeout(self, ctx, member: discord.Member = None, minutes: int = None, *, reason="No reason provided"):
+    async def timeout(
+        self,
+        ctx,
+        member: discord.Member = None,
+        minutes: int = None,
+        *,
+        reason: str = "No reason provided"
+    ):
         if not member or not minutes:
-            return await ctx.send("❌ Usage: `!timeout @user 5 reason`")
+            return await ctx.send("Usage: !timeout @user <minutes> <reason>")
 
         duration = timedelta(minutes=minutes)
 
-        # DM Embed
         try:
             embed = self.dm_embed(
-                "⏳ You were timed out",
-                f"**Duration:** {minutes} minutes\n**Reason:** {reason}",
+                "You were temporarily timed out",
+                f"Duration: {minutes} minutes\nReason: {reason}",
                 ctx.guild,
                 discord.Color.yellow()
             )
@@ -90,8 +91,7 @@ class Moderation(commands.Cog):
             pass
 
         await member.timeout(duration, reason=reason)
-        await ctx.send(f"⏳ **{member}** timed out for **{minutes} minutes**.")
-
+        await ctx.send(f"{member} has been timed out for {minutes} minutes.")
 
 async def setup(bot):
-    await bot.add_cog(Moderation(bot))
+    await bot.add_cog(OwnerModeration(bot))

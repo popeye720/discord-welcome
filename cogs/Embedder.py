@@ -1,19 +1,19 @@
-import os
 import discord
 from discord.ext import commands
-
-IMAGE_URL = os.getenv("EMBED_IMAGE_URL", "").strip()
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 class Embedder(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # 👑 owner auto-detect
+    def is_owner(self, ctx):
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+
     @commands.command(name="embedder")
-    async def embedder(self, ctx, channel_id: int, *, message: str):
-        # 🔒 Owner-only check
-        if ctx.author.id != OWNER_ID:
-            return await ctx.send("❌ Only the bot owner can use this command.")
+    async def embedder(self, ctx, channel_id: int, image_url: str, *, message: str):
+        # 🔒 Owner-only
+        if not self.is_owner(ctx):
+            return await ctx.send("❌ Only the **server owner** can use this command.")
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
@@ -24,12 +24,14 @@ class Embedder(commands.Cog):
             color=discord.Color.gold()
         )
 
-        # 🖼️ SAME image → thumbnail (top-right) + image (bottom)
-        if IMAGE_URL.startswith("http"):
-            embed.set_thumbnail(url=IMAGE_URL)  # top-right
-            embed.set_image(url=IMAGE_URL)      # bottom
+        # 🖼️ SAME image for thumbnail + image
+        if image_url.startswith("http"):
+            embed.set_thumbnail(url=image_url)
+            embed.set_image(url=image_url)
+        else:
+            return await ctx.send("❌ Please provide a valid image URL.")
 
-        # 👤 Footer: ONLY avatar icon
+        # 👤 Footer: only avatar icon
         embed.set_footer(icon_url=ctx.author.display_avatar.url)
 
         await channel.send(embed=embed)

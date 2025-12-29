@@ -3,7 +3,11 @@ import discord
 from discord.ext import commands
 import asyncio
 
-ALLOWED_GUILD_ID = 1137320194692370482
+# ✅ ALLOWED SERVERS
+ALLOWED_GUILD_IDS = {
+    1137320194692370482,
+    1455284985807503443
+}
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -16,18 +20,18 @@ TOKEN = os.getenv("TOKEN")
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot Logged in as {bot.user}")
+    print(f"Bot logged in as {bot.user}")
 
-    # 🔒 Leave all unauthorized servers
+    # Leave all unauthorized servers
     for guild in bot.guilds:
-        if guild.id != ALLOWED_GUILD_ID:
-            print(f"❌ Leaving unauthorized server: {guild.name}")
+        if guild.id not in ALLOWED_GUILD_IDS:
+            print(f"Leaving unauthorized server: {guild.name}")
             await guild.leave()
 
 @bot.event
 async def on_guild_join(guild):
-    if guild.id != ALLOWED_GUILD_ID:
-        print(f"❌ Unauthorized server joined: {guild.name}")
+    if guild.id not in ALLOWED_GUILD_IDS:
+        print(f"Unauthorized server joined: {guild.name}")
         await guild.leave()
 
 async def main():
@@ -46,11 +50,12 @@ async def main():
     await bot.load_extension("cogs.antilinks")
     await bot.load_extension("cogs.dm")
     await bot.load_extension("cogs.followuser")
-    await bot.load_extension("cogs.stream")
+    await bot.load_extension("cogs.streammode")
     await bot.load_extension("cogs.clip")
     await bot.load_extension("cogs.antispam")
     await bot.load_extension("cogs.moderation")
     await bot.load_extension("cogs.joinleave")
+
     await bot.start(TOKEN)
 
 asyncio.run(main())

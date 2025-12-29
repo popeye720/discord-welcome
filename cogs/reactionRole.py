@@ -1,132 +1,154 @@
-import os
 import discord
 from discord.ext import commands
+import json
+import os
 
-IMAGE_URL = os.getenv("EMBED_IMAGE_URL", "").strip()
+DATA_FILE = "data/reaction_roles.json"
 
-# ===== ROLES =====
-ROLE_18 = 1438173585519935600
-ROLE_MINOR = 1438173783717580840
-ROLE_BOY = 1439319767902060789
-ROLE_GIRL = 1439319577191252221
+def load_data():
+    os.makedirs("data", exist_ok=True)
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-# ===== EMOJIS =====
-EMOJI_18 = "🔞"
-EMOJI_MINOR = "🧒"
-EMOJI_BOY = "👦"
-EMOJI_GIRL = "👧"
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
-class ReactionRole(commands.Cog):
+class ReactionRoleManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.data = load_data()
 
-    # ========= SETUP MESSAGE =========
-    @commands.command()
-    @commands.is_owner()
-    async def rrsetup(self, ctx, channel_id: int):
+    # ---------- SERVER OWNER CHECK ----------
+    def is_owner(self, ctx):
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+
+    # ---------- ADD REACTION ROLE ----------
+    @commands.command(name="addrole")
+    async def add_role(self, ctx, channel_id: int, title: str, *, body: str):
+        if not self.is_owner(ctx):
+            return await ctx.send("Only the server owner can use this command.")
+
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            return await ctx.send("❌ Invalid channel ID.")
+            return await ctx.send("Invalid channel ID.")
 
-        # ===== AGE MESSAGE =====
-        age_embed = discord.Embed(
-            title="Age Selection",
-            description=(
-                f"{EMOJI_18} → 18+\n"
-                f"{EMOJI_MINOR} → Minor"
-            ),
-            color=discord.Color.gold()
+        """
+        Body format example:
+        BOY - for boys 👦
+        GIRL - for girls 👧
+        """
+
+        role_map = {}
+        lines = body.splitlines()
+
+        description_lines = []
+
+        for line in lines:
+            parts = line.rsplit(" ", 1)
+            if len(parts) != 2:
+                return await ctx.send("Invalid format. Each line must end with an emoji.")
+
+            text, emoji = parts
+            role_name = text.split("-")[0].strip()
+
+            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            if not role:
+                return await ctx.send(f"Role not found: {role_name}")
+
+            role_map[emoji] = role_name
+            description_lines.append(f"{emoji} {text}")
+
+        embed = discord.Embed(
+            title=title,
+            description="\n".join(description_lines),
+            color=discord.Color.blue()
         )
 
-        if IMAGE_URL.startswith("http"):
-            age_embed.set_thumbnail(url=IMAGE_URL)
-            age_embed.set_image(url=IMAGE_URL)
+        message = await channel.send(embed=embed)
 
-        age_msg = await channel.send(embed=age_embed)
-        await age_msg.add_reaction(EMOJI_18)
-        await age_msg.add_reaction(EMOJI_MINOR)
+        for emoji in role_map:
+            await message.add_reaction(emoji)
 
-        # ===== GENDER MESSAGE =====
-        gender_embed = discord.Embed(
-            title="Gender Selection",
-            description=(
-                f"{EMOJI_BOY} → Boy\n"
-                f"{EMOJI_GIRL} → Girl"
-            ),
-            color=discord.Color.gold()
-        )
+        guild_id = str(ctx.guild.id)
+        self.data.setdefault(guild_id, {})
+        self.data[guild_id][title] = {
+            "channel_id": channel.id,
+            "message_id": message.id,
+            "roles": role_map
+        }
 
-        if IMAGE_URL.startswith("http"):
-            gender_embed.set_thumbnail(url=IMAGE_URL)
-            gender_embed.set_image(url=IMAGE_URL)
+        save_data(self.data)
 
-        gender_msg = await channel.send(embed=gender_embed)
-        await gender_msg.add_reaction(EMOJI_BOY)
-        await gender_msg.add_reaction(EMOJI_GIRL)
+        await ctx.send("Reaction role message created successfully.")
 
-        await ctx.send(
-            f"✅ Reaction role messages sent to {channel.mention}\n"
-            f"Age Msg ID: `{age_msg.id}` | Gender Msg ID: `{gender_msg.id}`"
-        )
+    # ---------- REMOVE REACTION ROLE ----------
+    @commands.command(name="removerole")
+    async def remove_role(self, ctx, channel_id: int, *, title: str):
+        if not self.is_owner(ctx):
+            return await ctx.send("Only the server owner can use this command.")
 
-    # ========= ADD ROLE =========
+        guild_id = str(ctx.guild.id)
+        config = self.data.get(guild_id, {}).get(title)
+
+        if not config:
+            return await ctx.send("Reaction role with this title was not found.")
+
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            return await ctx.send("Invalid channel ID.")
+
+        try:
+            message = await channel.fetch_message(config["message_id"])
+            await message.delete()
+        except:
+            pass
+
+        del self.data[guild_id][title]
+        save_data(self.data)
+
+        await ctx.send("Reaction role message removed successfully.")
+
+    # ---------- REACTION ADD ----------
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
         if payload.user_id == self.bot.user.id:
             return
 
         guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-
         member = guild.get_member(payload.user_id)
+
         if not member:
             return
 
-        r18 = guild.get_role(ROLE_18)
-        rminor = guild.get_role(ROLE_MINOR)
-        rboy = guild.get_role(ROLE_BOY)
-        rgirl = guild.get_role(ROLE_GIRL)
+        guild_data = self.data.get(str(guild.id), {})
+        for config in guild_data.values():
+            if payload.message_id == config["message_id"]:
+                role_name = config["roles"].get(payload.emoji.name)
+                if role_name:
+                    role = discord.utils.get(guild.roles, name=role_name)
+                    if role:
+                        await member.add_roles(role)
 
-        if payload.emoji.name == EMOJI_18:
-            await member.remove_roles(rminor)
-            await member.add_roles(r18)
-
-        elif payload.emoji.name == EMOJI_MINOR:
-            await member.remove_roles(r18)
-            await member.add_roles(rminor)
-
-        elif payload.emoji.name == EMOJI_BOY:
-            await member.remove_roles(rgirl)
-            await member.add_roles(rboy)
-
-        elif payload.emoji.name == EMOJI_GIRL:
-            await member.remove_roles(rboy)
-            await member.add_roles(rgirl)
-
-    # ========= REMOVE ROLE =========
+    # ---------- REACTION REMOVE ----------
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
         guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-
         member = guild.get_member(payload.user_id)
+
         if not member:
             return
 
-        role_map = {
-            EMOJI_18: ROLE_18,
-            EMOJI_MINOR: ROLE_MINOR,
-            EMOJI_BOY: ROLE_BOY,
-            EMOJI_GIRL: ROLE_GIRL
-        }
-
-        role_id = role_map.get(payload.emoji.name)
-        if role_id:
-            role = guild.get_role(role_id)
-            if role:
-                await member.remove_roles(role)
+        guild_data = self.data.get(str(guild.id), {})
+        for config in guild_data.values():
+            if payload.message_id == config["message_id"]:
+                role_name = config["roles"].get(payload.emoji.name)
+                if role_name:
+                    role = discord.utils.get(guild.roles, name=role_name)
+                    if role:
+                        await member.remove_roles(role)
 
 async def setup(bot):
-    await bot.add_cog(ReactionRole(bot))
+    await bot.add_cog(ReactionRoleManager(bot))

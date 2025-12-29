@@ -106,3 +106,11 @@ class YouTubeNotify(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(YouTubeNotify(bot))
+
+
+
+
+
+
+
+#needs to be tested

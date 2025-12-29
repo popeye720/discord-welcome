@@ -1,19 +1,16 @@
 import discord
 from discord.ext import commands
 import wavelink
-import os
-
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 class JoinLeave(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.bot.owner_locked = False  # 🔒 default
 
-    # ---------- OWNER ONLY ----------
+    # ---------- OWNER ONLY (AUTO DETECT) ----------
     async def cog_check(self, ctx: commands.Context):
-        if ctx.author.id != OWNER_ID:
-            await ctx.send("🚫 This command is **Owner Only**.")
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            await ctx.send("🚫 This command is **Server Owner Only**.")
             return False
         return True
 

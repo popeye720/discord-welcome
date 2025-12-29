@@ -1,18 +1,10 @@
 from discord.ext import commands
 import discord
 import json
-import os
 import time
+import os
 
-# 👑 OWNER FROM ENV (Railway-safe)
-def get_owner_id():
-    try:
-        return int(os.getenv("OWNER_ID", "0"))
-    except ValueError:
-        return 0
-
-OWNER_ID = get_owner_id()
-COOLDOWN_SECONDS = 10  # ⏱️ 1 minute
+COOLDOWN_SECONDS = 10  # ⏱️ 10 seconds
 
 DATA_DIR = "data"
 TRIGGER_FILE = os.path.join(DATA_DIR, "triggers.json")
@@ -32,7 +24,6 @@ def load_triggers():
             data = json.load(f)
             return data if isinstance(data, dict) else {}
     except Exception:
-        # corrupted file → safe fallback
         return {}
 
 def save_triggers(triggers):
@@ -51,7 +42,7 @@ class AutoTriggers(commands.Cog):
     # -------- AUTO REPLY --------
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot:
+        if message.author.bot or not message.guild:
             return
 
         content = message.content.lower().strip()
@@ -70,7 +61,7 @@ class AutoTriggers(commands.Cog):
     # -------- ADD TRIGGER (OWNER ONLY) --------
     @commands.command(name="addtrigger")
     async def add_trigger(self, ctx, trigger: str, *, reply: str):
-        if ctx.author.id != OWNER_ID:
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
             await ctx.reply("❌ You are not allowed to use this command.")
             return
 
@@ -83,7 +74,7 @@ class AutoTriggers(commands.Cog):
     # -------- DELETE TRIGGER (OWNER ONLY) --------
     @commands.command(name="deltrigger")
     async def delete_trigger(self, ctx, trigger: str):
-        if ctx.author.id != OWNER_ID:
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
             await ctx.reply("❌ You are not allowed to use this command.")
             return
 
@@ -99,7 +90,7 @@ class AutoTriggers(commands.Cog):
     # -------- LIST TRIGGERS (OWNER ONLY) --------
     @commands.command(name="triggerlist")
     async def trigger_list(self, ctx):
-        if ctx.author.id != OWNER_ID:
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
             await ctx.reply("❌ You are not allowed to use this command.")
             return
 
@@ -107,7 +98,6 @@ class AutoTriggers(commands.Cog):
             await ctx.reply("ℹ️ No triggers are set yet.")
             return
 
-        # Discord embed description limit safe-guard
         names = sorted(TRIGGERS.keys())
         text = ", ".join(names)
         if len(text) > 4000:

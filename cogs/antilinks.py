@@ -39,7 +39,6 @@ class Protection(commands.Cog):
                     description=(
                         f"Hello **{message.author.name}**, 👋\n\n"
                         "**Links are not allowed anywhere in this server.**\n\n"
-                        "Only the **server owner** is allowed to send links."
                     ),
                     color=discord.Color.red()
                 )

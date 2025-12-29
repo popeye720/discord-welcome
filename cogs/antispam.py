@@ -8,10 +8,7 @@ from datetime import timedelta
 # ================= SETTINGS =================
 MESSAGE_LIMIT = 5
 TIME_WINDOW = 7
-TIMEOUT_SECONDS = 300  # 5 minutes
-
-# OWNER_ID already set in shared variable
-OWNER_ID = int(__import__("os").environ.get("OWNER_ID", 0))
+TIMEOUT_SECONDS = 600  # 5 minutes
 
 class AntiSpam(commands.Cog):
     def __init__(self, bot):
@@ -27,11 +24,11 @@ class AntiSpam(commands.Cog):
         member: discord.Member = message.author
         user_id = member.id
 
-        # ✅ CHANGE 1: OWNER KO IGNORE
-        if user_id == OWNER_ID:
+        # 🔥 SERVER OWNER KO IGNORE (auto-detect)
+        if user_id == message.guild.owner_id:
             return
 
-        # ✅ CHANGE 2: timeout ke baad aane wale msgs bhi delete
+        # ⛔ Locked user → delete all messages
         if user_id in self.locked_users:
             try:
                 await message.delete()
@@ -54,7 +51,7 @@ class AntiSpam(commands.Cog):
         if len(self.user_messages[user_id]) >= MESSAGE_LIMIT:
             self.locked_users.add(user_id)
 
-            # 🧹 Delete ALL collected spam messages
+            # 🧹 Delete all collected spam messages
             for _, msg in self.user_messages[user_id]:
                 try:
                     await msg.delete()
@@ -86,7 +83,7 @@ class AntiSpam(commands.Cog):
                     description=(
                         f"Hello {member.mention},\n\n"
                         "**Spamming is not allowed in this server.**\n\n"
-                        "⏳ **Timeout:** 5 minutes\n"
+                        f"⏳ **Timeout:** {TIMEOUT_SECONDS // 60} minutes\n"
                         "🔇 You cannot chat or join VC during this time."
                     ),
                     color=discord.Color.red()

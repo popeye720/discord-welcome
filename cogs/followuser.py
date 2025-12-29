@@ -1,8 +1,5 @@
-import os
 import discord
 from discord.ext import commands
-
-OWNER_ID = int(os.getenv("OWNER_ID"))  # Loaded from Railway ENV
 
 class FollowUser(commands.Cog):
     def __init__(self, bot):
@@ -11,14 +8,14 @@ class FollowUser(commands.Cog):
         self.primary_user_id = None
         self.secondary_user_id = None
 
-    # 🔒 Owner check
+    # 👑 OWNER CHECK (AUTO)
     def is_owner(self, ctx):
-        return ctx.author.id == OWNER_ID
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
 
     @commands.command(name="follow")
     async def follow(self, ctx, user1: discord.Member, user2: discord.Member = None):
         if not self.is_owner(ctx):
-            return await ctx.reply("❌ This command can only be used by the bot owner.")
+            return await ctx.reply("❌ This command can only be used by the **server owner**.")
 
         self.following = True
         self.primary_user_id = user1.id
@@ -37,7 +34,7 @@ class FollowUser(commands.Cog):
     @commands.command(name="stopfollow")
     async def stopfollow(self, ctx):
         if not self.is_owner(ctx):
-            return await ctx.reply("❌ This command can only be used by the bot owner.")
+            return await ctx.reply("❌ This command can only be used by the **server owner**.")
 
         self.following = False
         self.primary_user_id = None
@@ -86,7 +83,6 @@ class FollowUser(commands.Cog):
             return
 
         await self.try_follow(member.guild)
-
 
 async def setup(bot):
     await bot.add_cog(FollowUser(bot))

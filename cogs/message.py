@@ -5,18 +5,23 @@ class MessageImager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # -------- OWNER CHECK (SERVER OWNER) --------
+    def is_owner(self, ctx):
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+
     # ================= POST =================
 
     @commands.command()
-    @commands.is_owner()
     async def post(self, ctx, channel_id: int, *, text: str):
+        if not self.is_owner(ctx):
+            return await ctx.send("Only the server owner can use this command.")
 
         if not text.strip():
-            return await ctx.send("❌ Message empty hai.")
+            return await ctx.send("Message content cannot be empty.")
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            return await ctx.send("❌ Invalid channel ID!")
+            return await ctx.send("Invalid channel ID.")
 
         ping_everyone = False
         if text.startswith("--ping"):
@@ -48,31 +53,31 @@ class MessageImager(commands.Cog):
         )
 
         await ctx.send(
-            f"✅ Message sent | Channel: {channel.mention} | ID: `{msg.id}`"
+            f"Message sent successfully.\nChannel: {channel.mention}\nMessage ID: {msg.id}"
         )
 
     # ================= POST EDIT =================
 
     @commands.command()
-    @commands.is_owner()
     async def postedit(self, ctx, channel_id: int, message_id: int, *, new_text: str):
+        if not self.is_owner(ctx):
+            return await ctx.send("Only the server owner can use this command.")
 
         if not new_text.strip():
-            return await ctx.send("❌ Edit text empty hai.")
+            return await ctx.send("Edit text cannot be empty.")
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            return await ctx.send("❌ Invalid channel ID!")
+            return await ctx.send("Invalid channel ID.")
 
         try:
             target_message = await channel.fetch_message(message_id)
         except discord.NotFound:
-            return await ctx.send("❌ Message not found in that channel.")
+            return await ctx.send("Message not found in the specified channel.")
 
         if target_message.author.id != self.bot.user.id:
-            return await ctx.send("❌ I can only edit my own messages.")
+            return await ctx.send("I can only edit messages sent by me.")
 
-        # Keep existing embed/image
         embed = (
             target_message.embeds[0]
             if target_message.embeds
@@ -87,15 +92,7 @@ class MessageImager(commands.Cog):
             allowed_mentions=discord.AllowedMentions.none()
         )
 
-        await ctx.send(f"✅ Message `{message_id}` edited successfully!")
-
-    # ================= ERROR =================
-
-    @post.error
-    @postedit.error
-    async def owner_only_error(self, ctx, error):
-        if isinstance(error, commands.NotOwner):
-            await ctx.send("❌ Only the bot owner can use this command!")
+        await ctx.send(f"Message {message_id} edited successfully.")
 
 async def setup(bot):
     await bot.add_cog(MessageImager(bot))

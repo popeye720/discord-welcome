@@ -1,4 +1,3 @@
-import os
 import discord
 from discord.ext import commands
 import pytchat
@@ -6,13 +5,6 @@ import re
 import time
 import asyncio
 from datetime import datetime, timezone
-
-OWNER_ID = os.getenv("OWNER_ID")
-
-if OWNER_ID is None:
-    raise RuntimeError("❌ OWNER_ID environment variable is not set")
-
-OWNER_ID = int(OWNER_ID)
 
 class Clip(commands.Cog):
     def __init__(self, bot):
@@ -35,14 +27,18 @@ class Clip(commands.Cog):
     def seconds_to_hms(self, seconds: int):
         return f"{seconds//3600:02}:{(seconds%3600)//60:02}:{seconds%60:02}"
 
+    # 👑 OWNER CHECK (AUTO)
+    def is_owner(self, ctx):
+        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+
     # =========================
     # CLIP ON
     # =========================
     @commands.command(name="clipon")
     async def clipon(self, ctx, clip_channel: discord.TextChannel, stream_url: str):
 
-        if ctx.author.id != OWNER_ID:
-            return await ctx.reply("❌ You are not allowed to use this command")
+        if not self.is_owner(ctx):
+            return await ctx.reply("❌ Only the **server owner** can use this command.")
 
         if self.chat_task:
             return await ctx.reply("⚠️ Clip system already running")
@@ -67,7 +63,7 @@ class Clip(commands.Cog):
             f"✅ **Clip system ON**\n"
             f"📺 Stream ID: `{self.video_id}`\n"
             f"📌 Clip Channel: {clip_channel.mention}\n\n"
-            f"Use `!sync HH:MM:SS` in **Discord** (24-hour, optional)"
+            f"Use `!sync HH:MM:SS` (24-hour)"
         )
 
     # =========================
@@ -75,8 +71,8 @@ class Clip(commands.Cog):
     # =========================
     @commands.command(name="clipoff")
     async def clipoff(self, ctx):
-        if ctx.author.id != OWNER_ID:
-            return await ctx.reply("❌ You are not allowed")
+        if not self.is_owner(ctx):
+            return await ctx.reply("❌ Only the **server owner** can use this command.")
 
         if self.chat_task:
             self.chat_task.cancel()
@@ -91,8 +87,8 @@ class Clip(commands.Cog):
     # =========================
     @commands.command(name="sync")
     async def sync(self, ctx, *, time_str: str):
-        if ctx.author.id != OWNER_ID:
-            return await ctx.reply("❌ You are not allowed")
+        if not self.is_owner(ctx):
+            return await ctx.reply("❌ Only the **server owner** can use this command.")
 
         if not self.chat_task:
             return await ctx.reply("⚠️ Clip system is not active. Use `!clipon` first.")
@@ -102,7 +98,7 @@ class Clip(commands.Cog):
             self.sync_system_time = time.time()
             await ctx.reply(f"🔄 **SYNCED** at `{time_str}`")
         except:
-            await ctx.reply("❌ Use format: `!sync HH:MM:SS` (24-hour)")
+            await ctx.reply("❌ Use format: `!sync HH:MM:SS`")
 
     # =========================
     # YOUTUBE CHAT LISTENER

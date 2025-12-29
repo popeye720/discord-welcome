@@ -1,8 +1,5 @@
-import os
 import discord
 from discord.ext import commands
-
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 class ClearMessages(commands.Cog):
     def __init__(self, bot):
@@ -10,9 +7,9 @@ class ClearMessages(commands.Cog):
 
     @commands.command(name="clearmsg")
     async def clearmsg(self, ctx, *channel_ids: int):
-        # Owner-only check
-        if ctx.author.id != OWNER_ID:
-            return await ctx.send("❌ Only the bot owner can use this command.")
+        # 👑 SERVER OWNER ONLY (auto-detect)
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            return await ctx.send("❌ Only the **server owner** can use this command.")
 
         # Validate number of IDs
         if not channel_ids:

@@ -6,6 +6,9 @@ import time
 import asyncio
 from datetime import datetime, timezone
 
+# 🔐 CHANGE THIS TO YOUR DISCORD USER ID
+OWNER_ID = 123456789012345678  # <-- apna Discord ID daalo
+
 class Clip(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -18,7 +21,7 @@ class Clip(commands.Cog):
         self.clip_channel = None
 
     # =========================
-    # HELPERS (24-HOUR)
+    # HELPERS
     # =========================
     def hms_24_to_seconds(self, time_str):
         dt = datetime.strptime(time_str, "%H:%M:%S")
@@ -33,11 +36,14 @@ class Clip(commands.Cog):
     @commands.command(name="clipon")
     async def clipon(self, ctx, clip_channel: discord.TextChannel, stream_url: str):
 
-        if ctx.author.id != int(self.bot.config["OWNER_ID"]):
+        if ctx.author.id != OWNER_ID:
             return await ctx.reply("❌ You are not allowed to use this command")
 
         if self.chat_task:
             return await ctx.reply("⚠️ Clip system already running")
+
+        if not clip_channel.permissions_for(ctx.guild.me).send_messages:
+            return await ctx.reply("❌ I can't send messages in that channel")
 
         match = re.search(r"(?:v=|\/live\/)([a-zA-Z0-9_-]+)", stream_url)
         if not match:
@@ -64,7 +70,7 @@ class Clip(commands.Cog):
     # =========================
     @commands.command(name="clipoff")
     async def clipoff(self, ctx):
-        if ctx.author.id != int(self.bot.config["OWNER_ID"]):
+        if ctx.author.id != OWNER_ID:
             return await ctx.reply("❌ You are not allowed")
 
         if self.chat_task:
@@ -76,14 +82,13 @@ class Clip(commands.Cog):
             await ctx.reply("⚠️ Clip system not running")
 
     # =========================
-    # SYNC (DISCORD – ONLY IF ACTIVE)
+    # SYNC
     # =========================
     @commands.command(name="sync")
     async def sync(self, ctx, *, time_str: str):
-        if ctx.author.id != int(self.bot.config["OWNER_ID"]):
+        if ctx.author.id != OWNER_ID:
             return await ctx.reply("❌ You are not allowed")
 
-        # 🔒 IMPORTANT CHECK
         if not self.chat_task:
             return await ctx.reply("⚠️ Clip system is not active. Use `!clipon` first.")
 
@@ -95,11 +100,11 @@ class Clip(commands.Cog):
             await ctx.reply("❌ Use format: `!sync HH:MM:SS` (24-hour)")
 
     # =========================
-    # CHAT LISTENER (YouTube)
+    # YOUTUBE CHAT LISTENER
     # =========================
     async def listen_chat(self):
         try:
-            while self.chat.is_alive():
+            while self.chat and self.chat.is_alive():
                 for c in self.chat.get().sync_items():
                     text = c.message.strip()
 
@@ -112,9 +117,7 @@ class Clip(commands.Cog):
                     now = time.time()
 
                     if self.base_stream_seconds is not None:
-                        seconds = int(
-                            self.base_stream_seconds + (now - self.sync_system_time)
-                        )
+                        seconds = int(self.base_stream_seconds + (now - self.sync_system_time))
                     else:
                         seconds = int(now - self.script_start_time)
 
@@ -156,6 +159,13 @@ class Clip(commands.Cog):
 
         except asyncio.CancelledError:
             pass
+
+    # =========================
+    # CLEANUP
+    # =========================
+    def cog_unload(self):
+        if self.chat_task:
+            self.chat_task.cancel()
 
 
 async def setup(bot):

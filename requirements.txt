@@ -1,9 +1,10 @@
+discord.py
+pytchat
+python-dotenv
+pytz
 PyNaCl
 yt-dlp
 feedparser
-python-dotenv
 wavelink
 spotipy
 google-api-python-client
-pytz
-discord

@@ -46,10 +46,7 @@ class CloseTicketView(discord.ui.View):
                 ephemeral=True
             )
 
-        await interaction.response.send_message(
-            "Closing ticket...",
-            ephemeral=True
-        )
+        await interaction.response.send_message("Closing ticket...", ephemeral=True)
         await channel.delete(reason="Ticket closed")
 
 # ---------------- CREATE BUTTON ----------------
@@ -76,7 +73,7 @@ class TicketButton(discord.ui.View):
         category = guild.get_channel(config["category_id"])
         if not isinstance(category, discord.CategoryChannel):
             return await interaction.response.send_message(
-                "Ticket category is missing.",
+                "Ticket category missing.",
                 ephemeral=True
             )
 
@@ -96,15 +93,13 @@ class TicketButton(discord.ui.View):
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{user.id}",
             category=category,
-            overwrites=overwrites,
-            reason="New ticket created"
+            overwrites=overwrites
         )
 
         embed = discord.Embed(
             description=(
                 "Welcome to your ticket.\n\n"
                 "Please describe your issue clearly.\n"
-                "A staff member will assist you shortly.\n\n"
                 "Use the button below to close this ticket."
             ),
             color=discord.Color.blue()
@@ -132,55 +127,88 @@ class TicketSystem(commands.Cog):
     def is_owner(self, ctx):
         return ctx.guild and ctx.author.id == ctx.guild.owner_id
 
-    # ---------- SET TICKET ----------
+    # ---------- SET CATEGORY (ONCE) ----------
     @commands.command(name="setticket")
-    async def set_ticket(self, ctx, category_id: int):
+    async def setticket(self, ctx, category_id: int):
         if not self.is_owner(ctx):
-            return await ctx.send("Only the server owner can use this command.")
+            await ctx.message.delete()
+            return
 
         category = ctx.guild.get_channel(category_id)
         if not isinstance(category, discord.CategoryChannel):
-            return await ctx.send("Invalid category ID.")
+            await ctx.message.delete()
+            return
 
-        guild_id = str(ctx.guild.id)
-
-        self.data[guild_id] = {
-            "category_id": category.id,
-            "panel_channel_id": ctx.channel.id
+        self.data[str(ctx.guild.id)] = {
+            "category_id": category.id
         }
         save_data(self.data)
 
+        await ctx.message.delete()
+
+    # ---------- CREATE PANEL ----------
+    @commands.command(name="createticket")
+    async def createticket(self, ctx):
+        if not self.is_owner(ctx):
+            await ctx.message.delete()
+            return
+
+        guild_id = str(ctx.guild.id)
+        if guild_id not in self.data:
+            await ctx.message.delete()
+            return
+
         embed = discord.Embed(
+            title="🎫 Support Ticket",
             description=(
                 "Need help?\n\n"
-                "Click the button below to create a ticket.\n"
-                "Our team will assist you shortly."
+                "Click the button below to create a ticket."
             ),
             color=discord.Color.green()
         )
 
-        await ctx.channel.send(
+        panel_msg = await ctx.channel.send(
             embed=embed,
             view=TicketButton(self.bot)
         )
 
-        await ctx.send("Ticket system has been set up successfully.")
-
-    # ---------- DELETE TICKET ----------
-    @commands.command(name="deleteticket")
-    async def delete_ticket(self, ctx):
-        if not self.is_owner(ctx):
-            return await ctx.send("Only the server owner can use this command.")
-
-        guild_id = str(ctx.guild.id)
-
-        if guild_id not in self.data:
-            return await ctx.send("Ticket system is not set up for this server.")
-
-        del self.data[guild_id]
+        self.data[guild_id]["panel_channel_id"] = ctx.channel.id
+        self.data[guild_id]["panel_message_id"] = panel_msg.id
         save_data(self.data)
 
-        await ctx.send("Ticket system has been deleted successfully.")
+        await ctx.message.delete()
+
+    # ---------- DELETE PANEL ----------
+    @commands.command(name="deleteticket")
+    async def deleteticket(self, ctx):
+        if not self.is_owner(ctx):
+            await ctx.message.delete()
+            return
+
+        guild_id = str(ctx.guild.id)
+        config = self.data.get(guild_id)
+        if not config:
+            await ctx.message.delete()
+            return
+
+        if config.get("panel_channel_id") != ctx.channel.id:
+            await ctx.message.delete()
+            return
+
+        try:
+            channel = ctx.guild.get_channel(config["panel_channel_id"])
+            msg = await channel.fetch_message(config["panel_message_id"])
+            await msg.delete()
+        except:
+            pass
+
+        config.pop("panel_channel_id", None)
+        config.pop("panel_message_id", None)
+        save_data(self.data)
+
+        await ctx.message.delete()
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
+    bot.add_view(TicketButton(bot))
+    bot.add_view(CloseTicketView())

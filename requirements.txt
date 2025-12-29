@@ -5,6 +5,11 @@ pytz
 PyNaCl
 yt-dlp
 feedparser
+wavelink
+spotipy
+google-api-python-client
+
+
 
 
 

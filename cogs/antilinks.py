@@ -1,16 +1,11 @@
-import os
 import re
 import discord
 from discord.ext import commands
-import asyncio   # ✅ ADD THIS
 
 LINK_REGEX = re.compile(
     r"(https?:\/\/|www\.)\S+",
     re.IGNORECASE
 )
-
-ALLOWED_CHANNEL_LINKS = int(os.getenv("ALLOWED_CHANNEL_LINKS", 0))
-OWNER_ID = int(os.getenv("OWNER_ID", 0))
 
 class Protection(commands.Cog):
     def __init__(self, bot):
@@ -26,23 +21,12 @@ class Protection(commands.Cog):
         if not message.guild:
             return
 
-        # Owner can send links anywhere
-        if message.author.id == OWNER_ID:
+        # 🔥 Server owner can send links anywhere
+        if message.author.id == message.guild.owner_id:
             return
 
-        # Detect link
+        # 🚫 Detect link → delete everywhere
         if LINK_REGEX.search(message.content):
-
-            # ✅ Allowed channel → delete after 2 minutes
-            if message.channel.id == ALLOWED_CHANNEL_LINKS:
-                try:
-                    await asyncio.sleep(120)  # 2 minutes
-                    await message.delete()
-                except:
-                    pass
-                return
-
-            # ❌ Other channels → instant delete
             try:
                 await message.delete()
             except discord.Forbidden:
@@ -54,13 +38,14 @@ class Protection(commands.Cog):
                     title="🚫 Link Not Allowed",
                     description=(
                         f"Hello **{message.author.name}**, 👋\n\n"
-                        "**Links are not allowed in this server.**\n\n"
+                        "**Links are not allowed anywhere in this server.**\n\n"
+                        "Only the **server owner** is allowed to send links."
                     ),
                     color=discord.Color.red()
                 )
                 await message.author.send(embed=embed)
             except discord.Forbidden:
-                pass  # User has DMs closed
+                pass
 
 async def setup(bot):
     await bot.add_cog(Protection(bot))

@@ -1,3 +1,4 @@
+import os
 import discord
 from discord.ext import commands
 import pytchat
@@ -6,8 +7,8 @@ import time
 import asyncio
 from datetime import datetime, timezone
 
-# 🔐 CHANGE THIS TO YOUR DISCORD USER ID
-OWNER_ID = 123456789012345678  # <-- apna Discord ID daalo
+OWNER_ID = int(os.getenv("OWNER_ID"))
+
 
 class Clip(commands.Cog):
     def __init__(self, bot):

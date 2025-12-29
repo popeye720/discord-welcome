@@ -1,22 +1,5 @@
 import discord
 from discord.ext import commands
-import json
-import os
-
-DATA_FILE = "data/ticket.json"
-
-# ---------------- DATA HELPERS ----------------
-
-def load_data():
-    os.makedirs("data", exist_ok=True)
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
 
 # ---------------- CLOSE BUTTON ----------------
 
@@ -27,7 +10,6 @@ class CloseTicketView(discord.ui.View):
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.secondary)
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.channel
-        guild = interaction.guild
         user = interaction.user
 
         if not channel.name.startswith("ticket-"):
@@ -37,46 +19,34 @@ class CloseTicketView(discord.ui.View):
             )
 
         if not (
-            user.id == guild.owner_id
-            or user.guild_permissions.administrator
+            user.guild_permissions.administrator
             or channel.name == f"ticket-{user.id}"
         ):
             return await interaction.response.send_message(
-                "You are not allowed to close this ticket.",
+                "You cannot close this ticket.",
                 ephemeral=True
             )
 
         await interaction.response.send_message("Closing ticket...", ephemeral=True)
-        await channel.delete(reason="Ticket closed")
+        await channel.delete()
 
 # ---------------- CREATE BUTTON ----------------
 
 class TicketButton(discord.ui.View):
-    def __init__(self, bot):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.bot = bot
-        self.data = load_data()
 
     @discord.ui.button(label="Create Ticket", style=discord.ButtonStyle.green)
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
-        guild_id = str(guild.id)
 
-        config = self.data.get(guild_id)
-        if not config:
-            return await interaction.response.send_message(
-                "Ticket system is not configured.",
-                ephemeral=True
-            )
+        # auto category
+        category = discord.utils.get(guild.categories, name="Tickets")
+        if not category:
+            category = await guild.create_category("Tickets")
 
-        category = guild.get_channel(config["category_id"])
-        if not isinstance(category, discord.CategoryChannel):
-            return await interaction.response.send_message(
-                "Ticket category missing.",
-                ephemeral=True
-            )
-
+        # prevent duplicate ticket
         for ch in category.text_channels:
             if ch.name == f"ticket-{user.id}":
                 return await interaction.response.send_message(
@@ -85,9 +55,9 @@ class TicketButton(discord.ui.View):
                 )
 
         overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True),
         }
 
         ticket_channel = await guild.create_text_channel(
@@ -99,8 +69,8 @@ class TicketButton(discord.ui.View):
         embed = discord.Embed(
             description=(
                 "Welcome to your ticket.\n\n"
-                "Please describe your issue clearly.\n"
-                "Use the button below to close this ticket."
+                "Describe your issue here.\n"
+                "Use the button below to close the ticket."
             ),
             color=discord.Color.blue()
         )
@@ -121,94 +91,34 @@ class TicketButton(discord.ui.View):
 class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.data = load_data()
 
-    # ---------- OWNER CHECK ----------
-    def is_owner(self, ctx):
-        return ctx.guild and ctx.author.id == ctx.guild.owner_id
-
-    # ---------- SET CATEGORY (ONCE) ----------
-    @commands.command(name="setticket")
-    async def setticket(self, ctx, category_id: int):
-        if not self.is_owner(ctx):
-            await ctx.message.delete()
-            return
-
-        category = ctx.guild.get_channel(category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            await ctx.message.delete()
-            return
-
-        self.data[str(ctx.guild.id)] = {
-            "category_id": category.id
-        }
-        save_data(self.data)
-
-        await ctx.message.delete()
-
-    # ---------- CREATE PANEL ----------
+    # -------- CREATE PANEL --------
     @commands.command(name="createticket")
     async def createticket(self, ctx):
-        if not self.is_owner(ctx):
-            await ctx.message.delete()
-            return
-
-        guild_id = str(ctx.guild.id)
-        if guild_id not in self.data:
-            await ctx.message.delete()
-            return
+        await ctx.message.delete()
 
         embed = discord.Embed(
             title="🎫 Support Ticket",
-            description=(
-                "Need help?\n\n"
-                "Click the button below to create a ticket."
-            ),
+            description="Click the button below to create a ticket.",
             color=discord.Color.green()
         )
 
-        panel_msg = await ctx.channel.send(
+        await ctx.channel.send(
             embed=embed,
-            view=TicketButton(self.bot)
+            view=TicketButton()
         )
 
-        self.data[guild_id]["panel_channel_id"] = ctx.channel.id
-        self.data[guild_id]["panel_message_id"] = panel_msg.id
-        save_data(self.data)
-
-        await ctx.message.delete()
-
-    # ---------- DELETE PANEL ----------
+    # -------- DELETE PANEL --------
     @commands.command(name="deleteticket")
     async def deleteticket(self, ctx):
-        if not self.is_owner(ctx):
-            await ctx.message.delete()
-            return
-
-        guild_id = str(ctx.guild.id)
-        config = self.data.get(guild_id)
-        if not config:
-            await ctx.message.delete()
-            return
-
-        if config.get("panel_channel_id") != ctx.channel.id:
-            await ctx.message.delete()
-            return
-
-        try:
-            channel = ctx.guild.get_channel(config["panel_channel_id"])
-            msg = await channel.fetch_message(config["panel_message_id"])
-            await msg.delete()
-        except:
-            pass
-
-        config.pop("panel_channel_id", None)
-        config.pop("panel_message_id", None)
-        save_data(self.data)
-
         await ctx.message.delete()
+
+        async for msg in ctx.channel.history(limit=50):
+            if msg.author == self.bot.user and msg.components:
+                await msg.delete()
+                break
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
-    bot.add_view(TicketButton(bot))
+    bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())

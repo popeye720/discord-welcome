@@ -7,7 +7,11 @@ class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(
+        label="Close Ticket",
+        style=discord.ButtonStyle.secondary,
+        custom_id="ticket_close_button"
+    )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         channel = interaction.channel
         user = interaction.user
@@ -36,7 +40,11 @@ class TicketButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Create Ticket", style=discord.ButtonStyle.green)
+    @discord.ui.button(
+        label="Create Ticket",
+        style=discord.ButtonStyle.green,
+        custom_id="ticket_create_button"
+    )
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
@@ -117,6 +125,8 @@ class TicketSystem(commands.Cog):
             if msg.author == self.bot.user and msg.components:
                 await msg.delete()
                 break
+
+# ---------------- SETUP ----------------
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))

@@ -1,4 +1,6 @@
-discord.py
+discord.py==2.4.0
+pymongo==4.7.2
+dnspython==2.6.1
 pytchat
 python-dotenv
 pytz
@@ -8,11 +10,3 @@ feedparser
 wavelink
 spotipy
 google-api-python-client
-pymongo
-
-
-
-
-
-
-

@@ -3,10 +3,23 @@ import discord
 from discord.ext import commands
 import asyncio
 from pymongo import MongoClient
-import os
 
-client = MongoClient(os.getenv("MONGO_URI"))
-print(client.list_database_names())
+# ================== MONGO TEST (TEMP) ==================
+
+print("MONGO_URI exists:", bool(os.getenv("MONGO_URI")))
+
+client = MongoClient(
+    os.getenv("MONGO_URI"),
+    serverSelectionTimeoutMS=5000
+)
+
+try:
+    print("MONGO PING:", client.admin.command("ping"))
+except Exception as e:
+    print("MONGO ERROR:", e)
+
+# ======================================================
+
 
 # ✅ ALLOWED SERVERS
 ALLOWED_GUILD_IDS = {
@@ -22,12 +35,13 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 TOKEN = os.getenv("TOKEN")
+if not TOKEN:
+    raise RuntimeError("TOKEN environment variable not set")
 
 @bot.event
 async def on_ready():
     print(f"Bot logged in as {bot.user}")
 
-    # Leave all unauthorized servers
     for guild in bot.guilds:
         if guild.id not in ALLOWED_GUILD_IDS:
             print(f"Leaving unauthorized server: {guild.name}")
@@ -40,27 +54,28 @@ async def on_guild_join(guild):
         await guild.leave()
 
 async def main():
-    await bot.load_extension("cogs.welcome")
-    await bot.load_extension("cogs.message")
-    await bot.load_extension("cogs.autorole")
-    await bot.load_extension("cogs.youtube")
-    await bot.load_extension("cogs.ticket")
-    await bot.load_extension("cogs.join_to_create")
-    await bot.load_extension("cogs.auto_triggers")
-    await bot.load_extension("cogs.free_games")
-    await bot.load_extension("cogs.ChannelManager")
-    await bot.load_extension("cogs.Embedder")
-    await bot.load_extension("cogs.reactionRole")
-    await bot.load_extension("cogs.clearmsg")
-    await bot.load_extension("cogs.antilinks")
-    await bot.load_extension("cogs.dm")
-    await bot.load_extension("cogs.followuser")
-    await bot.load_extension("cogs.streammode")
-    await bot.load_extension("cogs.clip")
-    await bot.load_extension("cogs.antispam")
-    await bot.load_extension("cogs.moderation")
-    await bot.load_extension("cogs.joinleave")
+    async with bot:
+        await bot.load_extension("cogs.welcome")
+        await bot.load_extension("cogs.message")
+        await bot.load_extension("cogs.autorole")
+        await bot.load_extension("cogs.youtube")
+        await bot.load_extension("cogs.ticket")
+        await bot.load_extension("cogs.join_to_create")
+        await bot.load_extension("cogs.auto_triggers")
+        await bot.load_extension("cogs.free_games")
+        await bot.load_extension("cogs.ChannelManager")
+        await bot.load_extension("cogs.Embedder")
+        await bot.load_extension("cogs.reactionRole")
+        await bot.load_extension("cogs.clearmsg")
+        await bot.load_extension("cogs.antilinks")
+        await bot.load_extension("cogs.dm")
+        await bot.load_extension("cogs.followuser")
+        await bot.load_extension("cogs.streammode")
+        await bot.load_extension("cogs.clip")
+        await bot.load_extension("cogs.antispam")
+        await bot.load_extension("cogs.moderation")
+        await bot.load_extension("cogs.joinleave")
 
-    await bot.start(TOKEN)
+        await bot.start(TOKEN)
 
 asyncio.run(main())

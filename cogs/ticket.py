@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 
+from database.models import ticket_col
+
 # ---------------- CLOSE BUTTON ----------------
 
 class CloseTicketView(discord.ui.View):
@@ -16,7 +18,8 @@ class CloseTicketView(discord.ui.View):
         channel = interaction.channel
         user = interaction.user
 
-        if not channel.name.startswith("ticket-"):
+        data = ticket_col.find_one({"channel_id": channel.id})
+        if not data:
             return await interaction.response.send_message(
                 "This is not a ticket channel.",
                 ephemeral=True
@@ -24,7 +27,7 @@ class CloseTicketView(discord.ui.View):
 
         if not (
             user.guild_permissions.administrator
-            or channel.name == f"ticket-{user.id}"
+            or data["user_id"] == user.id
         ):
             return await interaction.response.send_message(
                 "You cannot close this ticket.",
@@ -32,6 +35,8 @@ class CloseTicketView(discord.ui.View):
             )
 
         await interaction.response.send_message("Closing ticket...", ephemeral=True)
+
+        ticket_col.delete_one({"channel_id": channel.id})
         await channel.delete()
 
 # ---------------- CREATE BUTTON ----------------
@@ -49,18 +54,24 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # auto category
+        # 🔎 prevent duplicate ticket (DB based)
+        existing = ticket_col.find_one({
+            "guild_id": guild.id,
+            "user_id": user.id,
+            "open": True
+        })
+        if existing:
+            ch = guild.get_channel(existing["channel_id"])
+            if ch:
+                return await interaction.response.send_message(
+                    f"You already have an open ticket: {ch.mention}",
+                    ephemeral=True
+                )
+
+        # 📂 auto category
         category = discord.utils.get(guild.categories, name="Tickets")
         if not category:
             category = await guild.create_category("Tickets")
-
-        # prevent duplicate ticket
-        for ch in category.text_channels:
-            if ch.name == f"ticket-{user.id}":
-                return await interaction.response.send_message(
-                    "You already have an open ticket.",
-                    ephemeral=True
-                )
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -73,6 +84,14 @@ class TicketButton(discord.ui.View):
             category=category,
             overwrites=overwrites
         )
+
+        # 💾 save to DB
+        ticket_col.insert_one({
+            "guild_id": guild.id,
+            "user_id": user.id,
+            "channel_id": ticket_channel.id,
+            "open": True
+        })
 
         embed = discord.Embed(
             description=(

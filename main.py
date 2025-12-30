@@ -3,23 +3,7 @@ import discord
 from discord.ext import commands
 import asyncio
 from pymongo import MongoClient
-
-# ================== MONGO TEST (TEMP) ==================
-
-print("MONGO_URI exists:", bool(os.getenv("MONGO_URI")))
-
-client = MongoClient(
-    os.getenv("MONGO_URI"),
-    serverSelectionTimeoutMS=5000
-)
-
-try:
-    print("MONGO PING:", client.admin.command("ping"))
-except Exception as e:
-    print("MONGO ERROR:", e)
-
-# ======================================================
-
+from database.mongo import db
 
 # ✅ ALLOWED SERVERS
 ALLOWED_GUILD_IDS = {

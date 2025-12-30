@@ -1,29 +1,13 @@
 import discord
 from discord.ext import commands
-import json
-import os
 
-DATA_FILE = "data/autorole.json"
+# ✅ Mongo collection
+from database.models import autorole_col
 
-# ---------------- DATA HELPERS ----------------
-
-def load_data():
-    os.makedirs("data", exist_ok=True)
-    if not os.path.exists(DATA_FILE):
-        return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
-# ---------------- COG ----------------
 
 class AutoRole(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.data = load_data()
 
     # ---------- OWNER CHECK ----------
     def is_owner(self, ctx):
@@ -32,15 +16,18 @@ class AutoRole(commands.Cog):
     # ---------- MEMBER JOIN ----------
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        guild_id = str(member.guild.id)
-        role_ids = self.data.get(guild_id, [])
+        data = autorole_col.find_one({"guild_id": member.guild.id})
+        if not data:
+            return
+
+        role_ids = data.get("role_ids", [])
 
         for role_id in role_ids:
             role = member.guild.get_role(role_id)
             if role:
                 try:
                     await member.add_roles(role, reason="Auto role on join")
-                except:
+                except Exception:
                     pass
 
     # ---------- ADD AUTOROLE ----------
@@ -53,17 +40,13 @@ class AutoRole(commands.Cog):
         if not role:
             return await ctx.send("Invalid role ID.")
 
-        guild_id = str(ctx.guild.id)
-        roles = self.data.get(guild_id, [])
+        autorole_col.update_one(
+            {"guild_id": ctx.guild.id},
+            {"$addToSet": {"role_ids": role_id}},  # duplicate nahi aayega
+            upsert=True
+        )
 
-        if role_id in roles:
-            return await ctx.send("This role is already in the auto-role list.")
-
-        roles.append(role_id)
-        self.data[guild_id] = roles
-        save_data(self.data)
-
-        await ctx.send(f"Auto role added: {role.name}")
+        await ctx.send(f"✅ Auto role added: {role.name}")
 
     # ---------- REMOVE AUTOROLE ----------
     @commands.command(name="removeautorole")
@@ -71,23 +54,17 @@ class AutoRole(commands.Cog):
         if not self.is_owner(ctx):
             return await ctx.send("Only the server owner can use this command.")
 
-        guild_id = str(ctx.guild.id)
-        roles = self.data.get(guild_id, [])
-
-        if role_id not in roles:
+        result = autorole_col.find_one({"guild_id": ctx.guild.id})
+        if not result or role_id not in result.get("role_ids", []):
             return await ctx.send("This role is not in the auto-role list.")
 
-        roles.remove(role_id)
-
-        if roles:
-            self.data[guild_id] = roles
-        else:
-            self.data.pop(guild_id, None)
-
-        save_data(self.data)
+        autorole_col.update_one(
+            {"guild_id": ctx.guild.id},
+            {"$pull": {"role_ids": role_id}}
+        )
 
         role = ctx.guild.get_role(role_id)
-        await ctx.send(f"Auto role removed: {role.name if role else role_id}")
+        await ctx.send(f"❌ Auto role removed: {role.name if role else role_id}")
 
     # ---------- CLEAR ALL ----------
     @commands.command(name="clearautoroles")
@@ -95,10 +72,9 @@ class AutoRole(commands.Cog):
         if not self.is_owner(ctx):
             return await ctx.send("Only the server owner can use this command.")
 
-        self.data.pop(str(ctx.guild.id), None)
-        save_data(self.data)
+        autorole_col.delete_one({"guild_id": ctx.guild.id})
+        await ctx.send("🗑️ All auto roles have been cleared.")
 
-        await ctx.send("All auto roles have been cleared.")
 
 async def setup(bot):
     await bot.add_cog(AutoRole(bot))

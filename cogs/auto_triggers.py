@@ -1,38 +1,11 @@
 from discord.ext import commands
 import discord
-import json
 import time
-import os
 
-COOLDOWN_SECONDS = 10  # ⏱️ 10 seconds
+from database.models import autotrigger_col
 
-DATA_DIR = "data"
-TRIGGER_FILE = os.path.join(DATA_DIR, "triggers.json")
+COOLDOWN_SECONDS = 10  # 10 seconds
 
-# ---------------- LOAD / SAVE ----------------
-
-def load_triggers():
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-    if not os.path.exists(TRIGGER_FILE):
-        with open(TRIGGER_FILE, "w", encoding="utf-8") as f:
-            json.dump({}, f)
-        return {}
-
-    try:
-        with open(TRIGGER_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except Exception:
-        return {}
-
-def save_triggers(triggers):
-    with open(TRIGGER_FILE, "w", encoding="utf-8") as f:
-        json.dump(triggers, f, indent=4, ensure_ascii=False)
-
-TRIGGERS = load_triggers()
-
-# ---------------- COG ----------------
 
 class AutoTriggers(commands.Cog):
     def __init__(self, bot):
@@ -47,69 +20,95 @@ class AutoTriggers(commands.Cog):
 
         content = message.content.lower().strip()
 
-        # ⏱️ cooldown per user
+        # cooldown per user
         now = time.time()
         last = self.cooldowns.get(message.author.id, 0)
         if now - last < COOLDOWN_SECONDS:
             return
 
-        reply = TRIGGERS.get(content)
-        if reply:
+        data = autotrigger_col.find_one({
+            "guild_id": message.guild.id,
+            "trigger": content
+        })
+
+        if data:
             self.cooldowns[message.author.id] = now
-            await message.reply(reply, mention_author=False)
+            await message.reply(
+                data["reply"],
+                mention_author=False
+            )
 
     # -------- ADD TRIGGER (OWNER ONLY) --------
     @commands.command(name="addtrigger")
     async def add_trigger(self, ctx, trigger: str, *, reply: str):
         if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ You are not allowed to use this command.")
-            return
+            return await ctx.reply("You are not allowed to use this command.")
 
         trigger = trigger.lower()
-        TRIGGERS[trigger] = reply
-        save_triggers(TRIGGERS)
 
-        await ctx.reply(f"✅ Trigger `{trigger}` added & saved permanently!")
+        existing = autotrigger_col.find_one({
+            "guild_id": ctx.guild.id,
+            "trigger": trigger
+        })
+        if existing:
+            return await ctx.reply(
+                f"Trigger `{trigger}` already exists."
+            )
+
+        autotrigger_col.insert_one({
+            "guild_id": ctx.guild.id,
+            "trigger": trigger,
+            "reply": reply
+        })
+
+        await ctx.reply(f"Trigger `{trigger}` added and saved permanently.")
 
     # -------- DELETE TRIGGER (OWNER ONLY) --------
     @commands.command(name="deltrigger")
     async def delete_trigger(self, ctx, trigger: str):
         if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ You are not allowed to use this command.")
-            return
+            return await ctx.reply("You are not allowed to use this command.")
 
         trigger = trigger.lower()
-        if trigger not in TRIGGERS:
-            await ctx.reply(f"⚠️ Trigger `{trigger}` does not exist.")
-            return
 
-        del TRIGGERS[trigger]
-        save_triggers(TRIGGERS)
-        await ctx.reply(f"🗑️ Trigger `{trigger}` deleted successfully!")
+        result = autotrigger_col.find_one_and_delete({
+            "guild_id": ctx.guild.id,
+            "trigger": trigger
+        })
+
+        if not result:
+            return await ctx.reply(f"Trigger `{trigger}` does not exist.")
+
+        await ctx.reply(f"Trigger `{trigger}` deleted successfully.")
 
     # -------- LIST TRIGGERS (OWNER ONLY) --------
     @commands.command(name="triggerlist")
     async def trigger_list(self, ctx):
         if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.reply("❌ You are not allowed to use this command.")
-            return
+            return await ctx.reply("You are not allowed to use this command.")
 
-        if not TRIGGERS:
-            await ctx.reply("ℹ️ No triggers are set yet.")
-            return
+        triggers = autotrigger_col.find(
+            {"guild_id": ctx.guild.id},
+            {"trigger": 1, "_id": 0}
+        )
 
-        names = sorted(TRIGGERS.keys())
+        names = sorted(t["trigger"] for t in triggers)
+
+        if not names:
+            return await ctx.reply("No triggers are set yet.")
+
         text = ", ".join(names)
         if len(text) > 4000:
             text = "\n".join(names)
 
         embed = discord.Embed(
-            title="📋 Trigger List",
+            title="Trigger List",
             description=text,
             color=discord.Color.blurple()
         )
+
         await ctx.reply(embed=embed)
 
-# REQUIRED FOR load_extension
+
 async def setup(bot):
     await bot.add_cog(AutoTriggers(bot))

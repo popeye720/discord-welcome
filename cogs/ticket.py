@@ -60,23 +60,29 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
+        # 🔎 get panel config from DB
         panel = ticket_panel_col.find_one({
             "guild_id": guild.id,
             "panel_channel_id": interaction.channel.id
         })
         if not panel:
-            return await interaction.response.send_message(
+            await interaction.response.send_message(
                 "Ticket panel configuration not found.",
                 ephemeral=True
             )
+            await interaction.delete_original_response(delay=5)
+            return
 
         category = guild.get_channel(panel["category_id"])
         if not isinstance(category, discord.CategoryChannel):
-            return await interaction.response.send_message(
+            await interaction.response.send_message(
                 "Ticket category is no longer available.",
                 ephemeral=True
             )
+            await interaction.delete_original_response(delay=5)
+            return
 
+        # prevent duplicate ticket
         existing = ticket_col.find_one({
             "guild_id": guild.id,
             "user_id": user.id,
@@ -85,12 +91,14 @@ class TicketButton(discord.ui.View):
         if existing:
             ch = guild.get_channel(existing["channel_id"])
             if ch:
-                return await interaction.response.send_message(
+                await interaction.response.send_message(
                     f"You already have an open ticket: {ch.mention}",
                     ephemeral=True
                 )
+                await interaction.delete_original_response(delay=5)
+                return
 
-        # 🔒 correct permissions
+        # 🔒 permissions (NO inheritance)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(
@@ -101,6 +109,7 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True),
         }
 
+        # admins / mods
         for role in guild.roles:
             if role.permissions.administrator:
                 overwrites[role] = discord.PermissionOverwrite(
@@ -140,11 +149,12 @@ class TicketButton(discord.ui.View):
             view=CloseTicketView()
         )
 
-        # ✅ EPHEMERAL = ONLY CREATOR SEES
+        # ✅ ONLY CREATOR SEES + AUTO-HIDE
         await interaction.response.send_message(
             f"Your ticket has been created: {ticket_channel.mention}",
             ephemeral=True
         )
+        await interaction.delete_original_response(delay=5)
 
 
 # ================= COG =================

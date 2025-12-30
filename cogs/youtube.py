@@ -24,7 +24,7 @@ class YouTubeNotify(commands.Cog):
         ctx,
         discord_channel_id: int,
         youtube_channel_id: str,
-        role_id: int = None  # optional
+        role_id: int = None
     ):
         if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
             return await ctx.reply("Only the server owner can use this command.")
@@ -64,6 +64,46 @@ class YouTubeNotify(commands.Cog):
 
         await ctx.reply("YouTube notification removed successfully.")
 
+    # ================= LIST COMMAND =================
+
+    @commands.command(name="ytnotifylist")
+    async def ytnotifylist(self, ctx):
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            return await ctx.reply("Only the server owner can use this command.")
+
+        configs = list(yt_notify_col.find({"guild_id": ctx.guild.id}))
+
+        if not configs:
+            return await ctx.reply("No YouTube notification channels are configured for this server.")
+
+        lines = []
+
+        for cfg in configs:
+            yt_id = cfg["youtube_channel_id"]
+            lines.append(f"**YouTube Channel ID:** `{yt_id}`")
+
+            for ch_cfg in cfg.get("discord_channels", []):
+                ch = ctx.guild.get_channel(ch_cfg["channel_id"])
+                ch_name = ch.mention if ch else f"`{ch_cfg['channel_id']}`"
+
+                if ch_cfg.get("role_id"):
+                    role = ctx.guild.get_role(ch_cfg["role_id"])
+                    role_name = role.mention if role else f"`{ch_cfg['role_id']}`"
+                else:
+                    role_name = "@everyone"
+
+                lines.append(f"• Notify Channel: {ch_name} | Mention: {role_name}")
+
+            lines.append("")  # spacing
+
+        embed = discord.Embed(
+            title="YouTube Notification List",
+            description="\n".join(lines),
+            color=discord.Color.blurple()
+        )
+
+        await ctx.reply(embed=embed)
+
     # ================= CHECK LOOP =================
 
     @tasks.loop(minutes=1)
@@ -88,7 +128,7 @@ class YouTubeNotify(commands.Cog):
             if last and last["video_id"] == video_id:
                 continue
 
-            # 🔥 live detection
+            # live detection
             is_live = "live" in entry.get("yt_videoavailability", "").lower()
 
             # skip scheduled streams
@@ -118,7 +158,6 @@ class YouTubeNotify(commands.Cog):
                 if not channel:
                     continue
 
-                # 🔔 mention logic
                 if ch_cfg.get("role_id"):
                     role = guild.get_role(ch_cfg["role_id"])
                     mention = role.mention if role else "@everyone"
@@ -128,14 +167,14 @@ class YouTubeNotify(commands.Cog):
                 if is_live:
                     msg = (
                         f"{mention}\n"
-                        "**LIVE NOW**\n"
+                        "LIVE NOW\n"
                         f"{entry.title}\n"
                         f"{entry.link}"
                     )
                 else:
                     msg = (
                         f"{mention}\n"
-                        "**New Video Uploaded**\n"
+                        "New Video Uploaded\n"
                         f"{entry.title}\n"
                         f"{entry.link}"
                     )

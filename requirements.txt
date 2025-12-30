@@ -8,10 +8,7 @@ feedparser
 wavelink
 spotipy
 google-api-python-client
-
-
-
-
+pymongo
 
 
 

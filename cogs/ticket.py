@@ -2,6 +2,10 @@ import discord
 from discord.ext import commands
 
 from database.models import ticket_col
+from database.mongo import db
+
+# panel config collection
+ticket_panel_col = db["ticket_panels"]
 
 
 # ================= CLOSE BUTTON =================
@@ -44,9 +48,8 @@ class CloseTicketView(discord.ui.View):
 # ================= CREATE BUTTON =================
 
 class TicketButton(discord.ui.View):
-    def __init__(self, category_id: int):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.category_id = category_id
 
     @discord.ui.button(
         label="Create Ticket",
@@ -57,7 +60,25 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # Prevent duplicate ticket
+        # 🔎 get panel config from DB
+        panel = ticket_panel_col.find_one({
+            "guild_id": guild.id,
+            "panel_channel_id": interaction.channel.id
+        })
+        if not panel:
+            return await interaction.response.send_message(
+                "Ticket panel configuration not found.",
+                ephemeral=True
+            )
+
+        category = guild.get_channel(panel["category_id"])
+        if not isinstance(category, discord.CategoryChannel):
+            return await interaction.response.send_message(
+                "Ticket category is no longer available.",
+                ephemeral=True
+            )
+
+        # prevent duplicate ticket
         existing = ticket_col.find_one({
             "guild_id": guild.id,
             "user_id": user.id,
@@ -70,13 +91,6 @@ class TicketButton(discord.ui.View):
                     f"You already have an open ticket: {ch.mention}",
                     ephemeral=True
                 )
-
-        category = guild.get_channel(self.category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return await interaction.response.send_message(
-                "Ticket category is no longer available.",
-                ephemeral=True
-            )
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -100,10 +114,10 @@ class TicketButton(discord.ui.View):
         embed = discord.Embed(
             title="Support Ticket",
             description=(
-                "Thank you for reaching out to our support team.\n\n"
-                "Please describe your issue clearly, and a staff member "
-                "will assist you as soon as possible.\n\n"
-                "Use the **Close Ticket** button below once your issue is resolved."
+                "Thank you for contacting the support team.\n\n"
+                "Please clearly describe your issue and a staff member "
+                "will assist you shortly.\n\n"
+                "Use the **Close Ticket** button once your issue is resolved."
             ),
             color=discord.Color.blurple()
         )
@@ -132,27 +146,36 @@ class TicketSystem(commands.Cog):
         await ctx.message.delete()
 
         channel = self.bot.get_channel(channel_id)
-        if not channel:
-            return await ctx.send("❌ Invalid channel ID.", delete_after=5)
-
-        if not channel.category:
+        if not channel or not channel.category:
             return await ctx.send(
-                "❌ This channel is not under any category.",
+                "❌ Invalid channel or missing category.",
                 delete_after=5
             )
+
+        # save panel config
+        ticket_panel_col.delete_many({
+            "guild_id": ctx.guild.id,
+            "panel_channel_id": channel.id
+        })
+
+        ticket_panel_col.insert_one({
+            "guild_id": ctx.guild.id,
+            "panel_channel_id": channel.id,
+            "category_id": channel.category.id
+        })
 
         embed = discord.Embed(
             title="🎫 Support Tickets",
             description=(
-                "If you need assistance, please create a ticket.\n\n"
-                "Our team will respond as soon as possible."
+                "Need assistance? Click the button below to create a ticket.\n\n"
+                "Our support team will respond as soon as possible."
             ),
             color=discord.Color.green()
         )
 
         await channel.send(
             embed=embed,
-            view=TicketButton(channel.category.id)
+            view=TicketButton()
         )
 
     # -------- DELETE PANEL --------
@@ -164,6 +187,11 @@ class TicketSystem(commands.Cog):
         if not channel:
             return
 
+        ticket_panel_col.delete_many({
+            "guild_id": ctx.guild.id,
+            "panel_channel_id": channel.id
+        })
+
         async for msg in channel.history(limit=50):
             if msg.author == self.bot.user and msg.components:
                 await msg.delete()
@@ -174,4 +202,3 @@ class TicketSystem(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(TicketSystem(bot))
-    bot.add_view(CloseTicketView())

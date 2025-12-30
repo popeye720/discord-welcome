@@ -2,7 +2,8 @@ import os
 import discord
 from discord.ext import commands
 import asyncio
-from pymongo import MongoClient
+
+# mongo import (connection auto ho jaata hai)
 from database.mongo import db
 
 # ✅ ALLOWED SERVERS
@@ -22,20 +23,29 @@ TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     raise RuntimeError("TOKEN environment variable not set")
 
+
 @bot.event
 async def on_ready():
-    print(f"Bot logged in as {bot.user}")
+    print(f"✅ Bot logged in as {bot.user}")
 
+    # 🔥 REGISTER PERSISTENT VIEWS (MOST IMPORTANT)
+    from cogs.ticket import TicketButton, CloseTicketView
+    bot.add_view(TicketButton())
+    bot.add_view(CloseTicketView())
+
+    # leave unauthorized servers
     for guild in bot.guilds:
         if guild.id not in ALLOWED_GUILD_IDS:
             print(f"Leaving unauthorized server: {guild.name}")
             await guild.leave()
+
 
 @bot.event
 async def on_guild_join(guild):
     if guild.id not in ALLOWED_GUILD_IDS:
         print(f"Unauthorized server joined: {guild.name}")
         await guild.leave()
+
 
 async def main():
     async with bot:
@@ -61,5 +71,6 @@ async def main():
         await bot.load_extension("cogs.joinleave")
 
         await bot.start(TOKEN)
+
 
 asyncio.run(main())

@@ -1,113 +1,151 @@
 import discord
 from discord.ext import commands, tasks
 import feedparser
-import os
-import sqlite3
+import datetime
 
-DB_PATH = "youtube_notify.db"
+from database.models import yt_notify_col, yt_last_col
 
-CHANNELS = [
-    {
-        "name": "NILESHYT",
-        "yt_id": os.getenv("NILESHYT_CHANNEL_ID"),
-        "discord_channel": int(os.getenv("NILESHYT_NOTIFY_CHANNEL")),
-    },
-    {
-        "name": "NILESHPLAYS",
-        "yt_id": os.getenv("NILESHPLAYS_CHANNEL_ID"),
-        "discord_channel": int(os.getenv("NILESHPLAYS_NOTIFY_CHANNEL")),
-    }
-]
+YOUTUBE_RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={}"
+
 
 class YouTubeNotify(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db = sqlite3.connect(DB_PATH)
-        self.cur = self.db.cursor()
-
-        self.cur.execute("""
-            CREATE TABLE IF NOT EXISTS yt_last_video (
-                channel_name TEXT PRIMARY KEY,
-                video_id TEXT
-            )
-        """)
-        self.db.commit()
-
-    async def cog_load(self):
-        # 🔒 FIRST SYNC (NO NOTIFY)
-        for ch in CHANNELS:
-            if not ch["yt_id"]:
-                continue
-
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={ch['yt_id']}"
-            feed = feedparser.parse(rss_url)
-
-            if not feed.entries:
-                continue
-
-            latest_video = feed.entries[0].yt_videoid
-
-            self.cur.execute(
-                "INSERT OR IGNORE INTO yt_last_video (channel_name, video_id) VALUES (?, ?)",
-                (ch["name"], latest_video)
-            )
-
-        self.db.commit()
         self.check_youtube.start()
 
     def cog_unload(self):
         self.check_youtube.cancel()
-        self.db.close()
+
+    # ================= OWNER COMMANDS =================
+
+    @commands.command(name="ytnotify")
+    async def add_notify(
+        self,
+        ctx,
+        discord_channel_id: int,
+        youtube_channel_id: str,
+        role_id: int = None  # optional
+    ):
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            return await ctx.reply("Only the server owner can use this command.")
+
+        yt_notify_col.update_one(
+            {
+                "guild_id": ctx.guild.id,
+                "youtube_channel_id": youtube_channel_id
+            },
+            {
+                "$addToSet": {
+                    "discord_channels": {
+                        "channel_id": discord_channel_id,
+                        "role_id": role_id
+                    }
+                }
+            },
+            upsert=True
+        )
+
+        await ctx.reply("YouTube notification configured successfully.")
+
+    @commands.command(name="removeytnotify")
+    async def remove_notify(self, ctx, youtube_channel_id: str):
+        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
+            return await ctx.reply("Only the server owner can use this command.")
+
+        yt_notify_col.delete_one({
+            "guild_id": ctx.guild.id,
+            "youtube_channel_id": youtube_channel_id
+        })
+
+        yt_last_col.delete_one({
+            "guild_id": ctx.guild.id,
+            "youtube_channel_id": youtube_channel_id
+        })
+
+        await ctx.reply("YouTube notification removed successfully.")
+
+    # ================= CHECK LOOP =================
 
     @tasks.loop(minutes=1)
     async def check_youtube(self):
-        for ch in CHANNELS:
-            if not ch["yt_id"]:
-                continue
+        configs = yt_notify_col.find({})
 
-            rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={ch['yt_id']}"
+        for cfg in configs:
+            rss_url = YOUTUBE_RSS.format(cfg["youtube_channel_id"])
             feed = feedparser.parse(rss_url)
 
             if not feed.entries:
                 continue
 
-            latest = feed.entries[0]
-            latest_video_id = latest.yt_videoid
+            entry = feed.entries[0]
+            video_id = entry.yt_videoid
 
-            self.cur.execute(
-                "SELECT video_id FROM yt_last_video WHERE channel_name = ?",
-                (ch["name"],)
-            )
-            row = self.cur.fetchone()
+            last = yt_last_col.find_one({
+                "guild_id": cfg["guild_id"],
+                "youtube_channel_id": cfg["youtube_channel_id"]
+            })
 
-            # Same video → skip
-            if row and row[0] == latest_video_id:
+            if last and last["video_id"] == video_id:
                 continue
 
-            # ✅ NEW VIDEO DETECTED
-            self.cur.execute(
-                "REPLACE INTO yt_last_video (channel_name, video_id) VALUES (?, ?)",
-                (ch["name"], latest_video_id)
-            )
-            self.db.commit()
+            # 🔥 live detection
+            is_live = "live" in entry.get("yt_videoavailability", "").lower()
 
-            channel = await self.bot.fetch_channel(ch["discord_channel"])
+            # skip scheduled streams
+            if "scheduled" in entry.title.lower():
+                continue
 
-            await channel.send(
-                "@everyone\n"
-                f"🎬 **New Video Uploaded!**\n"
-                f"📺 {latest.title}\n"
-                f"🔗 {latest.link}"
+            yt_last_col.update_one(
+                {
+                    "guild_id": cfg["guild_id"],
+                    "youtube_channel_id": cfg["youtube_channel_id"]
+                },
+                {
+                    "$set": {
+                        "video_id": video_id,
+                        "timestamp": datetime.datetime.utcnow()
+                    }
+                },
+                upsert=True
             )
+
+            guild = self.bot.get_guild(cfg["guild_id"])
+            if not guild:
+                continue
+
+            for ch_cfg in cfg.get("discord_channels", []):
+                channel = guild.get_channel(ch_cfg["channel_id"])
+                if not channel:
+                    continue
+
+                # 🔔 mention logic
+                if ch_cfg.get("role_id"):
+                    role = guild.get_role(ch_cfg["role_id"])
+                    mention = role.mention if role else "@everyone"
+                else:
+                    mention = "@everyone"
+
+                if is_live:
+                    msg = (
+                        f"{mention}\n"
+                        "**LIVE NOW**\n"
+                        f"{entry.title}\n"
+                        f"{entry.link}"
+                    )
+                else:
+                    msg = (
+                        f"{mention}\n"
+                        "**New Video Uploaded**\n"
+                        f"{entry.title}\n"
+                        f"{entry.link}"
+                    )
+
+                await channel.send(msg)
 
     @check_youtube.before_loop
     async def before_check(self):
         await self.bot.wait_until_ready()
 
+
 async def setup(bot):
     await bot.add_cog(YouTubeNotify(bot))
-
-
-
-
-

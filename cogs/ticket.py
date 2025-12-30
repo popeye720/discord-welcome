@@ -65,15 +65,17 @@ class TicketButton(discord.ui.View):
             "panel_channel_id": interaction.channel.id
         })
         if not panel:
-            await interaction.response.send_message("Ticket panel configuration not found.")
-            await interaction.delete_original_response(delay=5)
-            return
+            return await interaction.response.send_message(
+                "Ticket panel configuration not found.",
+                ephemeral=True
+            )
 
         category = guild.get_channel(panel["category_id"])
         if not isinstance(category, discord.CategoryChannel):
-            await interaction.response.send_message("Ticket category is no longer available.")
-            await interaction.delete_original_response(delay=5)
-            return
+            return await interaction.response.send_message(
+                "Ticket category is no longer available.",
+                ephemeral=True
+            )
 
         existing = ticket_col.find_one({
             "guild_id": guild.id,
@@ -83,13 +85,12 @@ class TicketButton(discord.ui.View):
         if existing:
             ch = guild.get_channel(existing["channel_id"])
             if ch:
-                await interaction.response.send_message(
-                    f"You already have an open ticket: {ch.mention}"
+                return await interaction.response.send_message(
+                    f"You already have an open ticket: {ch.mention}",
+                    ephemeral=True
                 )
-                await interaction.delete_original_response(delay=5)
-                return
 
-        # 🔥 FIXED PERMISSIONS (NO CATEGORY INHERIT)
+        # 🔒 correct permissions
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(
@@ -100,7 +101,6 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True),
         }
 
-        # allow admins/mods automatically
         for role in guild.roles:
             if role.permissions.administrator:
                 overwrites[role] = discord.PermissionOverwrite(
@@ -111,8 +111,8 @@ class TicketButton(discord.ui.View):
 
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{user.name}".lower(),
-            overwrites=overwrites,
             category=category,
+            overwrites=overwrites,
             reason="User support ticket"
         )
 
@@ -140,10 +140,11 @@ class TicketButton(discord.ui.View):
             view=CloseTicketView()
         )
 
+        # ✅ EPHEMERAL = ONLY CREATOR SEES
         await interaction.response.send_message(
-            f"Your ticket has been created: {ticket_channel.mention}"
+            f"Your ticket has been created: {ticket_channel.mention}",
+            ephemeral=True
         )
-        await interaction.delete_original_response(delay=5)
 
 
 # ================= COG =================

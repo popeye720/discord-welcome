@@ -1,12 +1,11 @@
 import discord
 from discord.ext import commands
 
-
 class Embedder(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 🔐 OWNER + ADMIN CHECK (AUTO)
+    # 🔐 OWNER + ADMIN CHECK
     def can_manage(self, ctx):
         return (
             ctx.guild
@@ -17,39 +16,32 @@ class Embedder(commands.Cog):
         )
 
     @commands.command(name="embedder")
-    async def embedder(self, ctx, channel_id: int, image_url: str, *, message: str):
+    async def embedder(self, ctx, channel_id: int, *, message: str):
         # 🔒 Permission check
         if not self.can_manage(ctx):
-            return await ctx.send(
-                "You do not have permission to use this command."
-            )
+            return await ctx.send("You do not have permission to use this command.")
 
         channel = self.bot.get_channel(channel_id)
         if not channel:
             return await ctx.send("Invalid channel ID.")
-
-        if not image_url.startswith("http"):
-            return await ctx.send("Please provide a valid image URL.")
 
         embed = discord.Embed(
             description=message,
             color=discord.Color.gold()
         )
 
-        # same image for thumbnail + main image
-        embed.set_thumbnail(url=image_url)
-        embed.set_image(url=image_url)
+        # 🖼️ Image OPTIONAL → if attached, use as thumbnail + image
+        if ctx.message.attachments:
+            attachment = ctx.message.attachments[0]
+            if attachment.content_type and attachment.content_type.startswith("image"):
+                embed.set_thumbnail(url=attachment.url)
+                embed.set_image(url=attachment.url)
 
-        # footer with author avatar only
-        embed.set_footer(
-            icon_url=ctx.author.display_avatar.url
-        )
+        # footer with author avatar
+        embed.set_footer(icon_url=ctx.author.display_avatar.url)
 
         await channel.send(embed=embed)
-        await ctx.send(
-            f"Embedded message sent to {channel.mention}"
-        )
-
+        await ctx.send(f"✅ Embedded message sent to {channel.mention}")
 
 async def setup(bot):
     await bot.add_cog(Embedder(bot))

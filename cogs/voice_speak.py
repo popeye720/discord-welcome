@@ -4,8 +4,8 @@ import asyncio
 import os
 import edge_tts
 
-# 🔒 In-memory lock (per guild)
-active_speaks = {}
+# 🔒 Per-server lock (guild_id based)
+guild_locks = {}
 
 class VoiceSpeak(commands.Cog):
     def __init__(self, bot):
@@ -23,44 +23,57 @@ class VoiceSpeak(commands.Cog):
     @commands.command(name="speak")
     @commands.has_guild_permissions(administrator=True)
     async def speak(self, ctx, *, words: str):
-
-        print(f"[SPEAK] Command used by {ctx.author} in {ctx.guild.name}")
-
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            print("[ERROR] User not in voice channel")
-            return await ctx.reply("You must be in a voice channel.")
-
         guild_id = ctx.guild.id
 
-        # 🔒 Lock check
-        if active_speaks.get(guild_id):
-            print("[LOCK] Speak already running in this guild")
-            return await ctx.reply("Speak command is already running.")
+        print(f"[SPEAK] Used by {ctx.author} in {ctx.guild.name}")
 
-        active_speaks[guild_id] = True
+        # 🔒 Same-server lock
+        if guild_locks.get(guild_id):
+            print("[LOCK] Speak already running in this server")
+            return await ctx.reply("Already speaking in this server. Wait.")
+
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            print("[ERROR] User not in VC")
+            return await ctx.reply("You must be in a voice channel.")
+
+        guild_locks[guild_id] = True
 
         vc = ctx.author.voice.channel
         voice_client = None
-        audio_file = f"/tmp/{guild_id}_tts.mp3"
+        audio_file = f"/tmp/tts_{guild_id}.mp3"
 
         try:
-            print("[STEP] Generating TTS file")
+            # 1️⃣ Generate TTS
             await self.generate_tts(words, audio_file)
 
             if not os.path.exists(audio_file):
-                print("[ERROR] TTS file not created")
-                return await ctx.reply("TTS failed to generate audio.")
+                print("[ERROR] Audio file missing")
+                return await ctx.reply("TTS audio failed.")
 
-            print("[STEP] Connecting to voice channel")
+            # 2️⃣ Connect to VC
+            print("[VC] Connecting...")
             voice_client = ctx.voice_client
             if voice_client and voice_client.is_connected():
                 await voice_client.move_to(vc)
             else:
-                voice_client = await vc.connect()
+                voice_client = await vc.connect(timeout=20)
 
-            print("[STEP] Playing audio")
-            source = discord.FFmpegPCMAudio(audio_file)
-            voice_client.play(source)
+            await asyncio.sleep(1)
+
+            # 3️⃣ Play audio
+            print("[AUDIO] Playing voice")
+
+            def after_play(err):
+                if err:
+                    print("[FFMPEG ERROR]", err)
+
+            source = discord.FFmpegPCMAudio(
+                audio_file,
+                before_options="-nostdin",
+                options="-vn"
+            )
+
+            voice_client.play(source, after=after_play)
 
             while voice_client.is_playing():
                 await asyncio.sleep(0.5)
@@ -72,21 +85,21 @@ class VoiceSpeak(commands.Cog):
             print(type(e))
             print(e)
             print("================================")
-            await ctx.reply("Error occurred. Check Railway logs.")
+            await ctx.reply("Voice error. Check Railway logs.")
 
         finally:
-            print("[CLEANUP] Cleaning resources")
+            print("[CLEANUP] Cleaning up")
 
             if voice_client and voice_client.is_connected():
                 await voice_client.disconnect()
-                print("[CLEANUP] Disconnected from VC")
+                print("[VC] Disconnected")
 
             if os.path.exists(audio_file):
                 os.remove(audio_file)
-                print("[CLEANUP] Audio file removed")
+                print("[FILE] Audio removed")
 
-            active_speaks.pop(guild_id, None)
-            print("[LOCK] Released")
+            guild_locks.pop(guild_id, None)
+            print("[LOCK] Released for this server")
 
     @speak.error
     async def speak_error(self, ctx, error):

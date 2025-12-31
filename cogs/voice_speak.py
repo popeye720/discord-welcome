@@ -16,7 +16,7 @@ class VoiceSpeak(commands.Cog):
         print("[DEBUG] ffmpeg path:", ffmpeg_path)
 
         if not ffmpeg_path:
-            raise RuntimeError("FFMPEG not found in PATH")
+            print("⚠️ WARNING: FFMPEG not found at startup")
 
     async def generate_tts(self, text, file_path):
         print("[TTS] Generating voice...")
@@ -38,6 +38,9 @@ class VoiceSpeak(commands.Cog):
 
         if not ctx.author.voice or not ctx.author.voice.channel:
             return await ctx.reply("You must be in a voice channel.")
+
+        if not shutil.which("ffmpeg"):
+            return await ctx.reply("❌ FFMPEG not available on server.")
 
         guild_locks[guild_id] = True
         vc = ctx.author.voice.channel

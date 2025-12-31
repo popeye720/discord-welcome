@@ -6,6 +6,7 @@ import time
 import asyncio
 from datetime import datetime, timezone
 
+
 class Clip(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -27,28 +28,33 @@ class Clip(commands.Cog):
     def seconds_to_hms(self, seconds: int):
         return f"{seconds//3600:02}:{(seconds%3600)//60:02}:{seconds%60:02}"
 
-    # 👑 OWNER CHECK (AUTO)
-    def is_owner(self, ctx):
-        return ctx.guild and ctx.author.id == ctx.guild.owner_id
+    # 🔐 DISCORD OWNER + ADMIN CHECK
+    def can_manage(self, ctx):
+        return (
+            ctx.guild
+            and (
+                ctx.author.id == ctx.guild.owner_id
+                or ctx.author.guild_permissions.administrator
+            )
+        )
 
     # =========================
     # CLIP ON
     # =========================
     @commands.command(name="clipon")
     async def clipon(self, ctx, clip_channel: discord.TextChannel, stream_url: str):
-
-        if not self.is_owner(ctx):
-            return await ctx.reply("❌ Only the **server owner** can use this command.")
+        if not self.can_manage(ctx):
+            return await ctx.reply("You do not have permission to use this command.")
 
         if self.chat_task:
-            return await ctx.reply("⚠️ Clip system already running")
+            return await ctx.reply("Clip system is already running.")
 
         if not clip_channel.permissions_for(ctx.guild.me).send_messages:
-            return await ctx.reply("❌ I can't send messages in that channel")
+            return await ctx.reply("I cannot send messages in that channel.")
 
         match = re.search(r"(?:v=|\/live\/)([a-zA-Z0-9_-]+)", stream_url)
         if not match:
-            return await ctx.reply("❌ Invalid YouTube Live URL")
+            return await ctx.reply("Invalid YouTube Live URL.")
 
         self.video_id = match.group(1)
         self.clip_channel = clip_channel
@@ -60,10 +66,10 @@ class Clip(commands.Cog):
         self.chat_task = asyncio.create_task(self.listen_chat())
 
         await ctx.reply(
-            f"✅ **Clip system ON**\n"
-            f"📺 Stream ID: `{self.video_id}`\n"
-            f"📌 Clip Channel: {clip_channel.mention}\n\n"
-            f"Use `!sync HH:MM:SS` (24-hour)"
+            f"Clip system enabled.\n"
+            f"Stream ID: `{self.video_id}`\n"
+            f"Clip Channel: {clip_channel.mention}\n\n"
+            f"Use `!sync HH:MM:SS`"
         )
 
     # =========================
@@ -71,34 +77,34 @@ class Clip(commands.Cog):
     # =========================
     @commands.command(name="clipoff")
     async def clipoff(self, ctx):
-        if not self.is_owner(ctx):
-            return await ctx.reply("❌ Only the **server owner** can use this command.")
+        if not self.can_manage(ctx):
+            return await ctx.reply("You do not have permission to use this command.")
 
         if self.chat_task:
             self.chat_task.cancel()
             self.chat_task = None
             self.chat = None
-            await ctx.reply("🛑 **Clip system OFF**")
+            await ctx.reply("Clip system disabled.")
         else:
-            await ctx.reply("⚠️ Clip system not running")
+            await ctx.reply("Clip system is not running.")
 
     # =========================
     # SYNC
     # =========================
     @commands.command(name="sync")
     async def sync(self, ctx, *, time_str: str):
-        if not self.is_owner(ctx):
-            return await ctx.reply("❌ Only the **server owner** can use this command.")
+        if not self.can_manage(ctx):
+            return await ctx.reply("You do not have permission to use this command.")
 
         if not self.chat_task:
-            return await ctx.reply("⚠️ Clip system is not active. Use `!clipon` first.")
+            return await ctx.reply("Clip system is not active.")
 
         try:
             self.base_stream_seconds = self.hms_24_to_seconds(time_str)
             self.sync_system_time = time.time()
-            await ctx.reply(f"🔄 **SYNCED** at `{time_str}`")
-        except:
-            await ctx.reply("❌ Use format: `!sync HH:MM:SS`")
+            await ctx.reply(f"Synced at `{time_str}`.")
+        except Exception:
+            await ctx.reply("Invalid time format. Use HH:MM:SS.")
 
     # =========================
     # YOUTUBE CHAT LISTENER
@@ -109,8 +115,13 @@ class Clip(commands.Cog):
                 for c in self.chat.get().sync_items():
                     text = c.message.strip()
 
+                    # only !clip command
                     if not text.lower().startswith("!clip"):
                         continue
+
+                    # 🔒 ONLY YOUTUBE OWNER OR MODERATOR
+                    if not (c.author.isChatOwner or c.author.isChatModerator):
+                        continue  # viewers ignored completely
 
                     parts = text.split(" ", 1)
                     clip_name = parts[1] if len(parts) > 1 else "No name"
@@ -118,26 +129,27 @@ class Clip(commands.Cog):
                     now = time.time()
 
                     if self.base_stream_seconds is not None:
-                        seconds = int(self.base_stream_seconds + (now - self.sync_system_time))
+                        seconds = int(
+                            self.base_stream_seconds
+                            + (now - self.sync_system_time)
+                        )
                     else:
                         seconds = int(now - self.script_start_time)
 
                     timestamp = self.seconds_to_hms(seconds)
-                    clip_url = f"https://www.youtube.com/watch?v={self.video_id}&t={seconds}s"
+                    clip_url = (
+                        f"https://www.youtube.com/watch?v="
+                        f"{self.video_id}&t={seconds}s"
+                    )
 
-                    if c.author.isChatOwner:
-                        role = "Owner"
-                    elif c.author.isChatModerator:
-                        role = "Moderator"
-                    else:
-                        role = "Viewer"
+                    role = "Owner" if c.author.isChatOwner else "Moderator"
 
                     embed = discord.Embed(
-                        title="🎬 Clip Requested",
+                        title="Clip Requested",
                         description=(
-                            f"👤 **User** : {c.author.name} ({role})\n"
-                            f"🏷️ **Clip Name** : {clip_name}\n"
-                            f"⏱️ **Timestamp** : `{timestamp}`"
+                            f"User: {c.author.name} ({role})\n"
+                            f"Clip Name: {clip_name}\n"
+                            f"Timestamp: `{timestamp}`"
                         ),
                         color=discord.Color.red(),
                         timestamp=datetime.now(timezone.utc)

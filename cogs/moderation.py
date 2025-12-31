@@ -2,19 +2,35 @@ import discord
 from discord.ext import commands
 from datetime import timedelta
 
+
 class OwnerModeration(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ---------- OWNER CHECK (SERVER OWNER) ----------
+    # ---------- OWNER + ADMIN CHECK ----------
     async def cog_check(self, ctx: commands.Context):
-        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            await ctx.send("This command can only be used by the server owner.")
+        if not ctx.guild:
             return False
-        return True
+
+        if (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return True
+
+        await ctx.send(
+            "You do not have permission to use this command."
+        )
+        return False
 
     # ---------- DM EMBED BUILDER ----------
-    def dm_embed(self, title: str, description: str, guild: discord.Guild, color: discord.Color):
+    def dm_embed(
+        self,
+        title: str,
+        description: str,
+        guild: discord.Guild,
+        color: discord.Color
+    ):
         embed = discord.Embed(
             title=title,
             description=description,
@@ -26,7 +42,13 @@ class OwnerModeration(commands.Cog):
 
     # ---------------- KICK ----------------
     @commands.command()
-    async def kick(self, ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
+    async def kick(
+        self,
+        ctx,
+        member: discord.Member = None,
+        *,
+        reason: str = "No reason provided"
+    ):
         if not member:
             return await ctx.send("Usage: !kick @user <reason>")
 
@@ -38,7 +60,7 @@ class OwnerModeration(commands.Cog):
                 discord.Color.orange()
             )
             await member.send(embed=embed)
-        except:
+        except Exception:
             pass
 
         await member.kick(reason=reason)
@@ -46,7 +68,13 @@ class OwnerModeration(commands.Cog):
 
     # ---------------- BAN ----------------
     @commands.command()
-    async def ban(self, ctx, member: discord.Member = None, *, reason: str = "No reason provided"):
+    async def ban(
+        self,
+        ctx,
+        member: discord.Member = None,
+        *,
+        reason: str = "No reason provided"
+    ):
         if not member:
             return await ctx.send("Usage: !ban @user <reason>")
 
@@ -58,7 +86,7 @@ class OwnerModeration(commands.Cog):
                 discord.Color.red()
             )
             await member.send(embed=embed)
-        except:
+        except Exception:
             pass
 
         await member.ban(reason=reason)
@@ -87,11 +115,14 @@ class OwnerModeration(commands.Cog):
                 discord.Color.yellow()
             )
             await member.send(embed=embed)
-        except:
+        except Exception:
             pass
 
         await member.timeout(duration, reason=reason)
-        await ctx.send(f"{member} has been timed out for {minutes} minutes.")
+        await ctx.send(
+            f"{member} has been timed out for {minutes} minutes."
+        )
+
 
 async def setup(bot):
     await bot.add_cog(OwnerModeration(bot))

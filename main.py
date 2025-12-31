@@ -3,11 +3,6 @@ import discord
 from discord.ext import commands
 import asyncio
 
-# mongo import (connection auto ho jaata hai)
-from database.mongo import db
-import shutil
-print("[DEBUG] ffmpeg path:", shutil.which("ffmpeg"))
-
 
 # ✅ ALLOWED SERVERS
 ALLOWED_GUILD_IDS = {
@@ -71,7 +66,7 @@ async def main():
         await bot.load_extension("cogs.antispam")
         await bot.load_extension("cogs.moderation")
         await bot.load_extension("cogs.joinleave")
-        await bot.load_extension("cogs.voice_speak")
+        #await bot.load_extension("cogs.voice_speak")
 
         await bot.start(TOKEN)
 

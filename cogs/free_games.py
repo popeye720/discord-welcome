@@ -10,7 +10,6 @@ class FreeGames(commands.Cog):
         self.bot = bot
         self.collection = db["free_games_config"]
 
-        # Indexes for performance (safe to call multiple times)
         self.collection.create_index("guild_id")
         self.collection.create_index([("guild_id", 1), ("channel_id", 1)])
 
@@ -25,28 +24,42 @@ class FreeGames(commands.Cog):
 
     @commands.command(name="freegames")
     @commands.has_guild_permissions(administrator=True)
-    async def set_free_games(self, ctx, channel_id: int):
+    async def set_free_games(self, ctx, channel_id: int, role_id: int = None):
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
             return await ctx.send("Invalid channel ID.")
+
+        role = None
+        if role_id:
+            role = ctx.guild.get_role(role_id)
+            if not role:
+                return await ctx.send("Invalid role ID.")
 
         self.collection.update_one(
             {"guild_id": ctx.guild.id},
             {"$set": {
                 "channel_id": channel_id,
+                "role_id": role_id,
                 "enabled": True,
                 "last_posted": []
             }},
             upsert=True
         )
 
-        await ctx.send(f"Free games updates enabled in {channel.mention}")
+        msg = f"Free games updates enabled in {channel.mention}"
+        if role:
+            msg += f" with role ping {role.mention}"
+
+        await ctx.send(msg)
 
     @commands.command(name="removefg")
     @commands.has_guild_permissions(administrator=True)
-    async def remove_free_games(self, ctx):
-        self.collection.delete_one({"guild_id": ctx.guild.id})
-        await ctx.send("Free games updates disabled.")
+    async def remove_free_games(self, ctx, channel_id: int):
+        self.collection.delete_one({
+            "guild_id": ctx.guild.id,
+            "channel_id": channel_id
+        })
+        await ctx.send("Free games updates disabled for this channel.")
 
     # ===============================
     # BACKGROUND TASK
@@ -69,6 +82,12 @@ class FreeGames(commands.Cog):
             if not channel:
                 continue
 
+            role_mention = ""
+            if config.get("role_id"):
+                role = guild.get_role(config["role_id"])
+                if role:
+                    role_mention = role.mention
+
             posted = config.get("last_posted", [])
 
             for game in all_games:
@@ -84,8 +103,21 @@ class FreeGames(commands.Cog):
                 embed.add_field(name="Previous Price", value=game["price"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)
 
+                view = discord.ui.View()
+                view.add_item(
+                    discord.ui.Button(
+                        label="Claim Now",
+                        style=discord.ButtonStyle.link,
+                        url=game["url"]
+                    )
+                )
+
                 try:
-                    await channel.send(embed=embed)
+                    await channel.send(
+                        content=role_mention if role_mention else None,
+                        embed=embed,
+                        view=view
+                    )
                 except discord.Forbidden:
                     continue
 
@@ -125,12 +157,15 @@ class FreeGames(commands.Cog):
             if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
                 continue
 
+            slug = game.get("productSlug") or game.get("urlSlug")
+
             games.append({
                 "id": game["id"],
                 "title": game["title"],
                 "platform": "Epic Games",
                 "price": f"${game['price']['totalPrice']['originalPrice'] / 100}",
-                "free_till": end.split("T")[0]
+                "free_till": end.split("T")[0],
+                "url": f"https://store.epicgames.com/p/{slug}"
             })
 
         return games
@@ -150,7 +185,8 @@ class FreeGames(commands.Cog):
                     "title": item["name"],
                     "platform": "Steam",
                     "price": f"${item['original_price'] / 100}",
-                    "free_till": "Limited Time"
+                    "free_till": "Limited Time",
+                    "url": f"https://store.steampowered.com/app/{item['id']}"
                 })
 
         return games

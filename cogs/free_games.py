@@ -2,17 +2,19 @@ import discord
 from discord.ext import commands, tasks
 import aiohttp
 from datetime import datetime
-from database.mongo import get_db
+from database.mongo import db
+
 
 class FreeGames(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db = get_db()
-        self.collection = self.db.free_games_config
-        self.check_free_games.start()
+        self.collection = db["free_games_config"]
 
+        # Indexes for performance (safe to call multiple times)
         self.collection.create_index("guild_id")
         self.collection.create_index([("guild_id", 1), ("channel_id", 1)])
+
+        self.check_free_games.start()
 
     def cog_unload(self):
         self.check_free_games.cancel()
@@ -56,7 +58,6 @@ class FreeGames(commands.Cog):
 
         epic_games = await self.fetch_epic_games()
         steam_games = await self.fetch_steam_games()
-
         all_games = epic_games + steam_games
 
         for config in configs:
@@ -76,14 +77,17 @@ class FreeGames(commands.Cog):
 
                 embed = discord.Embed(
                     title="🎮 FREE GAME ALERT",
-                    color=0x00ffcc
+                    color=0x00FFCC
                 )
                 embed.add_field(name="Game Title", value=game["title"], inline=False)
                 embed.add_field(name="Platform", value=game["platform"], inline=False)
                 embed.add_field(name="Previous Price", value=game["price"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)
 
-                await channel.send(embed=embed)
+                try:
+                    await channel.send(embed=embed)
+                except discord.Forbidden:
+                    continue
 
                 posted.append(game["id"])
 
@@ -111,27 +115,27 @@ class FreeGames(commands.Cog):
             if not promotions:
                 continue
 
-            for promo in promotions.get("promotionalOffers", []):
-                start = promo["promotionalOffers"][0]["startDate"]
-                end = promo["promotionalOffers"][0]["endDate"]
+            offers = promotions.get("promotionalOffers", [])
+            if not offers:
+                continue
 
-                if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
-                    continue
+            offer = offers[0]["promotionalOffers"][0]
+            end = offer["endDate"]
 
-                games.append({
-                    "id": game["id"],
-                    "title": game["title"],
-                    "platform": "Epic Games",
-                    "price": "$" + str(game["price"]["totalPrice"]["originalPrice"] / 100),
-                    "free_till": end.split("T")[0]
-                })
+            if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
+                continue
+
+            games.append({
+                "id": game["id"],
+                "title": game["title"],
+                "platform": "Epic Games",
+                "price": f"${game['price']['totalPrice']['originalPrice'] / 100}",
+                "free_till": end.split("T")[0]
+            })
 
         return games
 
     async def fetch_steam_games(self):
-        # Steam does not provide official free games API
-        # Using SteamDB-like filtering (safe fallback)
-
         url = "https://store.steampowered.com/api/featuredcategories"
         games = []
 
@@ -140,12 +144,12 @@ class FreeGames(commands.Cog):
                 data = await resp.json()
 
         for item in data.get("specials", {}).get("items", []):
-            if item["discount_percent"] == 100:
+            if item.get("discount_percent") == 100:
                 games.append({
                     "id": str(item["id"]),
                     "title": item["name"],
                     "platform": "Steam",
-                    "price": "$" + str(item["original_price"] / 100),
+                    "price": f"${item['original_price'] / 100}",
                     "free_till": "Limited Time"
                 })
 

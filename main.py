@@ -67,7 +67,7 @@ async def main():
         await bot.load_extension("cogs.moderation")
         await bot.load_extension("cogs.joinleave")
         await bot.load_extension("cogs.voice_speak")
-
+        await bot.load_extension("cogs.ffmpeg")
         await bot.start(TOKEN)
 
 

@@ -12,3 +12,5 @@ spotipy
 google-api-python-client
 edge-tts
 ffmpeg-python
+gTTS
+

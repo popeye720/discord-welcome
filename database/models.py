@@ -9,4 +9,4 @@ autotrigger_col = db["auto_triggers"]
 yt_notify_col = db["yt_notify"]
 yt_last_col = db["yt_last"]
 
-free_games_col = db["free_games_config"]
+speak_roles_col = db["speak_roles"]

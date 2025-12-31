@@ -8,3 +8,4 @@ autotrigger_col = db["auto_triggers"]
 
 yt_notify_col = db["yt_notify"]
 yt_last_col = db["yt_last"]
+voice_speak_lock_col = db["voice_speak_locks"]

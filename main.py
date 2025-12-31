@@ -5,6 +5,8 @@ import asyncio
 
 # mongo import (connection auto ho jaata hai)
 from database.mongo import db
+import shutil
+print("[DEBUG] ffmpeg path:", shutil.which("ffmpeg"))
 
 # ✅ ALLOWED SERVERS
 ALLOWED_GUILD_IDS = {

@@ -106,7 +106,9 @@ class JoinToCreate(commands.Cog):
             return await ctx.reply("Join-to-Create is not configured for this server.")
 
         if conf.get("jtc_channel_id") != jtc_channel_id:
-            return await ctx.reply("The provided channel ID does not match the active Join-to-Create channel.")
+            return await ctx.reply(
+                "The provided channel ID does not match the active Join-to-Create channel."
+            )
 
         channel = ctx.guild.get_channel(jtc_channel_id)
         if isinstance(channel, discord.VoiceChannel):
@@ -116,8 +118,60 @@ class JoinToCreate(commands.Cog):
                 pass
 
         jtc_col.delete_one({"guild_id": ctx.guild.id})
-
         await ctx.reply("Join-to-Create system has been disabled successfully.")
+
+    # ================= VC ALLOW =================
+    @commands.command(name="vcallow")
+    async def vc_allow(self, ctx, member: discord.Member):
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.reply("You must be inside your voice channel.")
+
+        vc = ctx.author.voice.channel
+        creator_id = self.temp_channels.get(vc.id)
+
+        if ctx.author.id != creator_id and ctx.author.id != ctx.guild.owner_id:
+            return await ctx.reply("You do not have permission to manage this voice channel.")
+
+        # Owner already has full access by default
+        if member.id == ctx.guild.owner_id:
+            return await ctx.reply("The server owner already has full access to this voice channel.")
+
+        await vc.set_permissions(
+            member,
+            connect=True,
+            speak=True
+        )
+
+        await ctx.reply(f"{member.mention} has been allowed to join the voice channel.")
+
+    # ================= VC REMOVE =================
+    @commands.command(name="vcremove")
+    async def vc_remove(self, ctx, member: discord.Member):
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.reply("You must be inside your voice channel.")
+
+        vc = ctx.author.voice.channel
+        creator_id = self.temp_channels.get(vc.id)
+
+        if ctx.author.id != creator_id and ctx.author.id != ctx.guild.owner_id:
+            return await ctx.reply("You do not have permission to manage this voice channel.")
+
+        # Owner protection (cannot be removed)
+        if member.id == ctx.guild.owner_id:
+            return await ctx.reply("The server owner cannot be removed from a voice channel.")
+
+        if member in vc.members:
+            try:
+                await member.move_to(None)
+            except Exception:
+                pass
+
+        await vc.set_permissions(
+            member,
+            connect=False
+        )
+
+        await ctx.reply(f"{member.mention} has been removed from the voice channel.")
 
     # ================= VOICE LISTENER =================
     @commands.Cog.listener()
@@ -157,15 +211,19 @@ class JoinToCreate(commands.Cog):
             creator_id = self.temp_channels.get(vc.id)
 
             creator = vc.guild.get_member(creator_id)
+            owner = vc.guild.owner
 
             if not creator or creator not in vc.members:
-                # Disconnect all users except server owner
+                if owner and owner in vc.members:
+                    return
+
                 for m in vc.members:
-                    if m.id != vc.guild.owner_id:
-                        try:
-                            await m.move_to(None)
-                        except Exception:
-                            pass
+                    if owner and m.id == owner.id:
+                        continue
+                    try:
+                        await m.move_to(None)
+                    except Exception:
+                        pass
 
                 try:
                     await vc.delete()

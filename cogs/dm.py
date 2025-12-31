@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-import re
 
 class DMAll(commands.Cog):
     def __init__(self, bot):
@@ -10,11 +9,6 @@ class DMAll(commands.Cog):
     def is_owner(self, ctx):
         return ctx.guild and ctx.author.id == ctx.guild.owner_id
 
-    # 🔗 URL DETECTOR
-    def extract_url(self, text):
-        match = re.search(r"(https?://\S+)", text)
-        return match.group(1) if match else None
-
     # ------------------ SINGLE DM ------------------
     @commands.command(name="dm")
     async def dm_user(self, ctx, user: discord.User, *, message: str):
@@ -22,35 +16,23 @@ class DMAll(commands.Cog):
             return await ctx.send("❌ Only **Server Owner** can use this command.")
 
         embed = discord.Embed(
-            description=message,
+            description=message,  # 🔗 links here are clickable
             color=discord.Color.gold()
         )
 
-        # 🖼️ If image attached → thumbnail
+        # 🖼️ Use attached image as BOTH image + thumbnail
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image"):
+                embed.set_image(url=attachment.url)
                 embed.set_thumbnail(url=attachment.url)
 
-        view = None
-        url = self.extract_url(message)
-
-        # 🔘 External button if URL found
-        if url:
-            view = discord.ui.View()
-            view.add_item(
-                discord.ui.Button(
-                    label="Open Link 🔗",
-                    url=url
-                )
-            )
-
         try:
-            await user.send(embed=embed, view=view)
+            await user.send(embed=embed)
             await ctx.send(f"✅ DM sent to **{user}**")
         except discord.Forbidden:
             await ctx.send("❌ Cannot DM this user.")
-        except Exception as e:
+        except Exception:
             await ctx.send("❌ Something went wrong.")
 
     # ------------------ DM ALL ------------------
@@ -62,27 +44,16 @@ class DMAll(commands.Cog):
         await ctx.send("📨 Sending embed DMs to all members...")
 
         embed = discord.Embed(
-            description=message,
+            description=message,  # 🔗 links clickable
             color=discord.Color.gold()
         )
 
-        # 🖼️ Attachment → thumbnail
+        # 🖼️ Use attached image as BOTH image + thumbnail
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image"):
+                embed.set_image(url=attachment.url)
                 embed.set_thumbnail(url=attachment.url)
-
-        url = self.extract_url(message)
-        view = None
-
-        if url:
-            view = discord.ui.View()
-            view.add_item(
-                discord.ui.Button(
-                    label="Open Link 🔗",
-                    url=url
-                )
-            )
 
         sent = 0
         failed = 0
@@ -92,7 +63,7 @@ class DMAll(commands.Cog):
                 continue
 
             try:
-                await member.send(embed=embed, view=view)
+                await member.send(embed=embed)
                 sent += 1
             except:
                 failed += 1

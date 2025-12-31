@@ -16,16 +16,16 @@ class DMAll(commands.Cog):
             return await ctx.send("❌ Only **Server Owner** can use this command.")
 
         embed = discord.Embed(
-            description=message,  # 🔗 links here are clickable
+            description=message,  # links clickable
             color=discord.Color.gold()
         )
 
-        # 🖼️ Use attached image as BOTH image + thumbnail
+        # 🖼️ ATTACHED IMAGE → thumbnail + niche image
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image"):
-                embed.set_image(url=attachment.url)
-                embed.set_thumbnail(url=attachment.url)
+                embed.set_thumbnail(url=attachment.url)  # 🔼 upar
+                embed.set_image(url=attachment.url)      # 🔽 niche
 
         try:
             await user.send(embed=embed)
@@ -44,16 +44,16 @@ class DMAll(commands.Cog):
         await ctx.send("📨 Sending embed DMs to all members...")
 
         embed = discord.Embed(
-            description=message,  # 🔗 links clickable
+            description=message,
             color=discord.Color.gold()
         )
 
-        # 🖼️ Use attached image as BOTH image + thumbnail
+        # 🖼️ ATTACHED IMAGE → thumbnail + niche image
         if ctx.message.attachments:
             attachment = ctx.message.attachments[0]
             if attachment.content_type and attachment.content_type.startswith("image"):
-                embed.set_image(url=attachment.url)
-                embed.set_thumbnail(url=attachment.url)
+                embed.set_thumbnail(url=attachment.url)  # 🔼 upar
+                embed.set_image(url=attachment.url)      # 🔽 niche
 
         sent = 0
         failed = 0
@@ -61,7 +61,6 @@ class DMAll(commands.Cog):
         for member in ctx.guild.members:
             if member.bot:
                 continue
-
             try:
                 await member.send(embed=embed)
                 sent += 1

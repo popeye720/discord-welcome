@@ -7,8 +7,7 @@ import asyncio
 from database.mongo import db
 import shutil
 print("[DEBUG] ffmpeg path:", shutil.which("ffmpeg"))
-import subprocess
-subprocess.run(["ffmpeg", "-version"])
+
 
 # ✅ ALLOWED SERVERS
 ALLOWED_GUILD_IDS = {

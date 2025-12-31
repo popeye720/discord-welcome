@@ -11,7 +11,12 @@ guild_locks = {}
 class VoiceSpeak(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        print("[DEBUG] ffmpeg path:", shutil.which("ffmpeg"))
+
+        ffmpeg_path = shutil.which("ffmpeg")
+        print("[DEBUG] ffmpeg path:", ffmpeg_path)
+
+        if not ffmpeg_path:
+            raise RuntimeError("FFMPEG not found in PATH")
 
     async def generate_tts(self, text, file_path):
         print("[TTS] Generating voice...")
@@ -54,7 +59,6 @@ class VoiceSpeak(commands.Cog):
 
             source = discord.FFmpegPCMAudio(
                 audio_file,
-                executable="/usr/bin/ffmpeg",
                 before_options="-nostdin",
                 options="-vn"
             )

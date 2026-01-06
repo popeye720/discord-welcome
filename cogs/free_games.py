@@ -2,21 +2,44 @@ import discord
 from discord.ext import commands, tasks
 import aiohttp
 from datetime import datetime
-from database.mongo import db
+from database.models import freegames_col
+import asyncio
+
+# ===============================
+# 🔗 PERSISTENT LINK BUTTON VIEW
+# ===============================
+class FreeGameLinkView(discord.ui.View):
+    def __init__(self, url: str):
+        super().__init__(timeout=None)
+        self.url = url
+
+        self.add_item(
+            discord.ui.Button(
+                label="Claim Now",
+                style=discord.ButtonStyle.link,
+                url=self.url,
+                custom_id="free_game_claim_link"  # persistent id
+            )
+        )
 
 
 class FreeGames(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.collection = db["free_games_config"]
+        self.collection = freegames_col
 
-        self.collection.create_index("guild_id")
-        self.collection.create_index([("guild_id", 1), ("channel_id", 1)])
+        # indexes
+        self.collection.create_index("guild_id", unique=True)
 
+        self.session = aiohttp.ClientSession()
+
+    async def cog_load(self):
+        await self.bot.wait_until_ready()
         self.check_free_games.start()
 
     def cog_unload(self):
         self.check_free_games.cancel()
+        asyncio.create_task(self.session.close())
 
     # ===============================
     # ADMIN COMMANDS
@@ -25,28 +48,33 @@ class FreeGames(commands.Cog):
     @commands.command(name="freegames")
     @commands.has_guild_permissions(administrator=True)
     async def set_free_games(self, ctx, channel_id: int, role_id: int = None):
+
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
-            return await ctx.send("Invalid channel ID.")
+            return await ctx.send("❌ Invalid channel ID.")
 
         role = None
         if role_id:
             role = ctx.guild.get_role(role_id)
             if not role:
-                return await ctx.send("Invalid role ID.")
+                return await ctx.send("❌ Invalid role ID.")
 
-        self.collection.update_one(
-            {"guild_id": ctx.guild.id},
-            {"$set": {
-                "channel_id": channel_id,
-                "role_id": role_id,
-                "enabled": True,
-                "last_posted": []
-            }},
-            upsert=True
-        )
+        existing = self.collection.find_one({"guild_id": ctx.guild.id})
+        if existing:
+            return await ctx.send(
+                "❌ Free games already enabled in this server.\n"
+                "Use `!removefg` first."
+            )
 
-        msg = f"Free games updates enabled in {channel.mention}"
+        self.collection.insert_one({
+            "guild_id": ctx.guild.id,
+            "channel_id": channel_id,
+            "role_id": role_id,
+            "enabled": True,
+            "last_posted": []
+        })
+
+        msg = f"✅ Free games enabled in {channel.mention}"
         if role:
             msg += f" with role ping {role.mention}"
 
@@ -54,12 +82,13 @@ class FreeGames(commands.Cog):
 
     @commands.command(name="removefg")
     @commands.has_guild_permissions(administrator=True)
-    async def remove_free_games(self, ctx, channel_id: int):
-        self.collection.delete_one({
-            "guild_id": ctx.guild.id,
-            "channel_id": channel_id
-        })
-        await ctx.send("Free games updates disabled for this channel.")
+    async def remove_free_games(self, ctx):
+
+        result = self.collection.delete_one({"guild_id": ctx.guild.id})
+        if result.deleted_count == 0:
+            return await ctx.send("❌ Free games not enabled in this server.")
+
+        await ctx.send("✅ Free games updates disabled.")
 
     # ===============================
     # BACKGROUND TASK
@@ -67,7 +96,9 @@ class FreeGames(commands.Cog):
 
     @tasks.loop(hours=12)
     async def check_free_games(self):
-        configs = self.collection.find({"enabled": True})
+        configs = list(self.collection.find({"enabled": True}))
+        if not configs:
+            return
 
         epic_games = await self.fetch_epic_games()
         steam_games = await self.fetch_steam_games()
@@ -98,30 +129,25 @@ class FreeGames(commands.Cog):
                     title="🎮 FREE GAME ALERT",
                     color=0x00FFCC
                 )
-                embed.add_field(name="Game Title", value=game["title"], inline=False)
+                embed.add_field(name="Game", value=game["title"], inline=False)
                 embed.add_field(name="Platform", value=game["platform"], inline=False)
-                embed.add_field(name="Previous Price", value=game["price"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)
 
-                view = discord.ui.View()
-                view.add_item(
-                    discord.ui.Button(
-                        label="Claim Now",
-                        style=discord.ButtonStyle.link,
-                        url=game["url"]
-                    )
-                )
+                view = FreeGameLinkView(game["url"])
 
                 try:
                     await channel.send(
-                        content=role_mention if role_mention else None,
+                        content=role_mention or None,
                         embed=embed,
                         view=view
                     )
+                    await asyncio.sleep(1)
                 except discord.Forbidden:
                     continue
 
                 posted.append(game["id"])
+
+            posted = posted[-100:]
 
             self.collection.update_one(
                 {"guild_id": guild.id},
@@ -129,18 +155,25 @@ class FreeGames(commands.Cog):
             )
 
     # ===============================
-    # DATA FETCHERS
+    # DATA FETCHERS (UNCHANGED)
     # ===============================
 
     async def fetch_epic_games(self):
         url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
         games = []
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+        try:
+            async with self.session.get(url, timeout=15) as resp:
                 data = await resp.json()
+        except Exception:
+            return games
 
-        elements = data["data"]["Catalog"]["searchStore"]["elements"]
+        elements = (
+            data.get("data", {})
+            .get("Catalog", {})
+            .get("searchStore", {})
+            .get("elements", [])
+        )
 
         for game in elements:
             promotions = game.get("promotions")
@@ -152,18 +185,21 @@ class FreeGames(commands.Cog):
                 continue
 
             offer = offers[0]["promotionalOffers"][0]
-            end = offer["endDate"]
+            end = offer.get("endDate")
+            if not end:
+                continue
 
             if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
                 continue
 
             slug = game.get("productSlug") or game.get("urlSlug")
+            if not slug:
+                continue
 
             games.append({
                 "id": game["id"],
                 "title": game["title"],
                 "platform": "Epic Games",
-                "price": f"${game['price']['totalPrice']['originalPrice'] / 100}",
                 "free_till": end.split("T")[0],
                 "url": f"https://store.epicgames.com/p/{slug}"
             })
@@ -174,20 +210,25 @@ class FreeGames(commands.Cog):
         url = "https://store.steampowered.com/api/featuredcategories"
         games = []
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+        try:
+            async with self.session.get(url, timeout=15) as resp:
                 data = await resp.json()
+        except Exception:
+            return games
 
         for item in data.get("specials", {}).get("items", []):
-            if item.get("discount_percent") == 100:
-                games.append({
-                    "id": str(item["id"]),
-                    "title": item["name"],
-                    "platform": "Steam",
-                    "price": f"${item['original_price'] / 100}",
-                    "free_till": "Limited Time",
-                    "url": f"https://store.steampowered.com/app/{item['id']}"
-                })
+            if item.get("discount_percent") != 100:
+                continue
+            if not item.get("is_free"):
+                continue
+
+            games.append({
+                "id": str(item["id"]),
+                "title": item["name"],
+                "platform": "Steam",
+                "free_till": "Limited Time",
+                "url": f"https://store.steampowered.com/app/{item['id']}"
+            })
 
         return games
 

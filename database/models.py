@@ -7,7 +7,5 @@ reactionrole_col = db["reaction_roles"]
 autotrigger_col = db["auto_triggers"]
 greetings_col = db["greetings"] 
 autorole_col = db["auto_roles"]
-
-
-
 guilds_col = db["guilds"]
+freegames_col = db["free_games_config"]

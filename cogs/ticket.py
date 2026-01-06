@@ -78,7 +78,7 @@ class TicketButton(discord.ui.View):
                 ephemeral=True
             )
 
-        # ❌ PER GUILD ONLY ONE TICKET
+        # ❌ PER GUILD ONLY ONE TICKET (IMPORTANT CHANGE)
         existing = ticket_col.find_one({
             "guild_id": guild.id,
             "open": True
@@ -128,15 +128,9 @@ class TicketButton(discord.ui.View):
 
         embed = discord.Embed(
             title="Support Ticket",
-            description=(
-                "Thank you for contacting the support team.\n\n"
-                "Please clearly describe your issue and a staff member "
-                "will assist you shortly.\n\n"
-                "Use the **Close Ticket** button once your issue is resolved."
-            ),
+            description="Please describe your issue and our team will assist you shortly.\nUse the **Close Ticket** button when resolved.",
             color=discord.Color.blurple()
-        )
-
+        )   
         await ticket_channel.send(
             content=user.mention,
             embed=embed,
@@ -157,10 +151,13 @@ class TicketSystem(commands.Cog):
 
     @commands.command(name="createticket")
     async def createticket(self, ctx, channel_id: int):
+        await ctx.message.delete()
+
         channel = self.bot.get_channel(channel_id)
         if not channel or not channel.category:
             return await ctx.send(
-                "❌ Invalid channel or missing category."
+                "❌ Invalid channel or missing category.",
+                delete_after=5
             )
 
         ticket_panel_col.delete_many({
@@ -176,8 +173,9 @@ class TicketSystem(commands.Cog):
 
         embed = discord.Embed(
             title="🎫 Support Tickets",
-            description="Need assistance? Click the button below to create a ticket.\n\n"
-                        "**Only one ticket is allowed per server at a time.**",
+            description=(
+                "Need assistance? Click the button below to create a ticket.\n\n"
+            ),
             color=discord.Color.green()
         )
 
@@ -185,9 +183,11 @@ class TicketSystem(commands.Cog):
 
     @commands.command(name="deleteticket")
     async def deleteticket(self, ctx, channel_id: int):
+        await ctx.message.delete()
+
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            return await ctx.send("❌ Invalid channel ID.")
+            return
 
         ticket_panel_col.delete_many({
             "guild_id": ctx.guild.id,

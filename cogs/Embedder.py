@@ -43,10 +43,11 @@ class Embedder(commands.Cog):
             color=discord.Color.gold()
         )
 
-        # 🖼️ Image attach (optional)
+        # 🖼️ IMAGE → THUMB + MAIN IMAGE
         if ctx.message.attachments:
             att = ctx.message.attachments[0]
             if att.content_type and att.content_type.startswith("image"):
+                embed.set_thumbnail(url=att.url)
                 embed.set_image(url=att.url)
 
         embed.set_footer(
@@ -85,7 +86,6 @@ class Embedder(commands.Cog):
         except discord.NotFound:
             return await ctx.send("❌ Message not found.")
 
-        # ❌ only bot messages
         if target.author.id != self.bot.user.id:
             return await ctx.send("❌ Only bot messages can be edited.")
 
@@ -101,7 +101,6 @@ class Embedder(commands.Cog):
         if not new_message.strip():
             return await ctx.send("❌ Message content cannot be empty.")
 
-        # get existing embed or create new
         embed = (
             target.embeds[0]
             if target.embeds
@@ -111,12 +110,13 @@ class Embedder(commands.Cog):
         embed.description = new_message
         embed.color = discord.Color.gold()
 
-        # 🖼️ Image handling
+        # 🖼️ IMAGE LOGIC
         if ctx.message.attachments:
             att = ctx.message.attachments[0]
             if att.content_type and att.content_type.startswith("image"):
+                embed.set_thumbnail(url=att.url)
                 embed.set_image(url=att.url)
-        # else → old image stays automatically
+        # else → old thumbnail + image remain
 
         embed.set_footer(
             text=f"Edited by {ctx.author}",

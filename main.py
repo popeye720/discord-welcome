@@ -59,6 +59,7 @@ async def main():
         #await bot.load_extension("cogs.reactionRole")
         await bot.load_extension("cogs.antilinks")
         await bot.load_extension("cogs.dm")
+        await bot.load_extension("cogs.greetings")
         #await bot.load_extension("cogs.followuser")
         #await bot.load_extension("cogs.streammode")
         #await bot.load_extension("cogs.clip")

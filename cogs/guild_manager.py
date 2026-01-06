@@ -31,7 +31,8 @@ class GuildActionView(View):
 
         guilds_col.update_one(
             {"guild_id": self.guild_id},
-            {"$set": {"blacklisted": True}}
+            {"$set": {"blacklisted": True}},
+            upsert=True
         )
 
         guild = self.bot.get_guild(self.guild_id)
@@ -61,7 +62,6 @@ class GuildActionView(View):
             f"✅ Bot left `{guild.name}` server.",
             ephemeral=True
         )
-
 
 # ===============================
 # 🤖 GUILD MANAGER COG
@@ -103,7 +103,6 @@ class GuildManager(commands.Cog):
             embed.add_field(name="Members", value=guild.member_count, inline=False)
 
             view = GuildActionView(self.bot, guild.id)
-
             await owner.send(embed=embed, view=view)
 
         print(f"✅ Joined & saved: {guild.name} ({guild.id})")
@@ -154,6 +153,59 @@ class GuildManager(commands.Cog):
             msg += f"• **{g['guild_name']}** (`{g['guild_id']}`) → {status}\n"
 
         await ctx.send(msg)
+
+    # ===============================
+    # 🚫 Blacklist (DM COMMAND)
+    # ===============================
+    @commands.command()
+    async def blacklist(self, ctx, guild_id: int):
+        if not self._check_dm_owner(ctx):
+            return
+
+        guilds_col.update_one(
+            {"guild_id": guild_id},
+            {"$set": {"blacklisted": True}},
+            upsert=True
+        )
+
+        guild = self.bot.get_guild(guild_id)
+        if guild:
+            await guild.leave()
+
+        await ctx.send(f"🚫 Server `{guild_id}` blacklisted & bot left.")
+
+    # ===============================
+    # ♻️ Unblacklist (DM COMMAND)
+    # ===============================
+    @commands.command()
+    async def unblacklist(self, ctx, guild_id: int):
+        if not self._check_dm_owner(ctx):
+            return
+
+        guilds_col.update_one(
+            {"guild_id": guild_id},
+            {"$set": {"blacklisted": False}},
+            upsert=True
+        )
+
+        await ctx.send(f"✅ Server `{guild_id}` unblacklisted.")
+
+    # ===============================
+    # 🚪 Leave server (DM COMMAND)
+    # ===============================
+    @commands.command()
+    async def leave(self, ctx, guild_id: int):
+        if not self._check_dm_owner(ctx):
+            return
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return await ctx.send("❌ Bot is server me nahi hai.")
+
+        await guild.leave()
+        guilds_col.delete_one({"guild_id": guild_id})
+
+        await ctx.send(f"✅ Bot left `{guild.name}` server.")
 
 async def setup(bot):
     await bot.add_cog(GuildManager(bot))

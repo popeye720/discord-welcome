@@ -3,12 +3,6 @@ import discord
 from discord.ext import commands
 import asyncio
 
-# ✅ ALLOWED SERVERS
-ALLOWED_GUILD_IDS = {
-    1137320194692370482,
-    1455284985807503443
-}
-
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -30,18 +24,10 @@ async def on_ready():
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
 
-    # leave unauthorized servers
-    for guild in bot.guilds:
-        if guild.id not in ALLOWED_GUILD_IDS:
-            print(f"Leaving unauthorized server: {guild.name}")
-            await guild.leave()
-
 
 @bot.event
 async def on_guild_join(guild):
-    if guild.id not in ALLOWED_GUILD_IDS:
-        print(f"Unauthorized server joined: {guild.name}")
-        await guild.leave()
+    print(f"🆕 Bot joined server: {guild.name} ({guild.id})")
 
 
 async def main():
@@ -71,11 +57,3 @@ async def main():
 
 
 asyncio.run(main())
-
-
-
-
-
-
-
-

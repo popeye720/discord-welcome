@@ -5,23 +5,6 @@ from datetime import datetime
 from database.models import freegames_col
 import asyncio
 
-# ===============================
-# 🔗 PERSISTENT LINK BUTTON VIEW
-# ===============================
-class FreeGameLinkView(discord.ui.View):
-    def __init__(self, url: str):
-        super().__init__(timeout=None)
-        self.url = url
-
-        self.add_item(
-            discord.ui.Button(
-                label="Claim Now",
-                style=discord.ButtonStyle.link,
-                url=self.url,
-                custom_id="free_game_claim_link"  # persistent id
-            )
-        )
-
 
 class FreeGames(commands.Cog):
     def __init__(self, bot):
@@ -34,6 +17,7 @@ class FreeGames(commands.Cog):
         self.session = aiohttp.ClientSession()
 
     async def cog_load(self):
+        # start task only AFTER bot is ready
         await self.bot.wait_until_ready()
         self.check_free_games.start()
 
@@ -59,6 +43,7 @@ class FreeGames(commands.Cog):
             if not role:
                 return await ctx.send("❌ Invalid role ID.")
 
+        # 🔒 ONE CHANNEL PER SERVER
         existing = self.collection.find_one({"guild_id": ctx.guild.id})
         if existing:
             return await ctx.send(
@@ -133,7 +118,14 @@ class FreeGames(commands.Cog):
                 embed.add_field(name="Platform", value=game["platform"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)
 
-                view = FreeGameLinkView(game["url"])
+                view = discord.ui.View()
+                view.add_item(
+                    discord.ui.Button(
+                        label="Claim Now",
+                        style=discord.ButtonStyle.link,
+                        url=game["url"]
+                    )
+                )
 
                 try:
                     await channel.send(
@@ -141,12 +133,13 @@ class FreeGames(commands.Cog):
                         embed=embed,
                         view=view
                     )
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(1)  # rate-limit safety
                 except discord.Forbidden:
                     continue
 
                 posted.append(game["id"])
 
+            # 🔒 LIMIT last_posted SIZE
             posted = posted[-100:]
 
             self.collection.update_one(
@@ -155,7 +148,7 @@ class FreeGames(commands.Cog):
             )
 
     # ===============================
-    # DATA FETCHERS (UNCHANGED)
+    # DATA FETCHERS
     # ===============================
 
     async def fetch_epic_games(self):
@@ -219,6 +212,8 @@ class FreeGames(commands.Cog):
         for item in data.get("specials", {}).get("items", []):
             if item.get("discount_percent") != 100:
                 continue
+
+            # extra safety: skip free weekends
             if not item.get("is_free"):
                 continue
 

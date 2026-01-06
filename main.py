@@ -19,17 +19,14 @@ if not TOKEN:
 async def on_ready():
     print(f"✅ Bot logged in as {bot.user}")
 
-    # 🔥 REGISTER PERSISTENT VIEWS
+    # 🔥 REGISTER PERSISTENT VIEWS (MOST IMPORTANT)
     from cogs.ticket import TicketButton, CloseTicketView
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
 
+    # 🔥 REGISTER GUILD MANAGER PERSISTENT VIEW
     from cogs.guild_manager import GuildActionView
-    bot.add_view(GuildActionView(bot, guild_id=0))
-
-    # 🔥 REGISTER FREE GAMES PERSISTENT VIEW
-    from cogs.free_games import FreeGameLinkView
-    bot.add_view(FreeGameLinkView("https://example.com"))
+    bot.add_view(GuildActionView(bot, guild_id=0))  # 👈 REQUIRED for restart support
 
 
 @bot.event

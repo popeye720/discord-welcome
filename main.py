@@ -46,7 +46,7 @@ async def on_guild_join(guild):
 
 async def main():
     async with bot:
-        await bot.load_extension("cogs.welcome")
+        #await bot.load_extension("cogs.welcome")
         await bot.load_extension("cogs.message")
         await bot.load_extension("cogs.autorole")
         #await bot.load_extension("cogs.youtube")

@@ -17,36 +17,57 @@ class Greetings(commands.Cog):
             )
         return commands.check(predicate)
 
-    # -------- SET GREETINGS CHANNEL --------
-    @commands.command(name="setgreetings")
+    # -------- SET WELCOME (ONLY ONCE) --------
+    @commands.command(name="setwelcome")
     @is_admin()
-    async def set_greetings(self, ctx, channel_id: int):
+    async def set_welcome(self, ctx, channel_id: int):
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
             return await ctx.reply("❌ Invalid channel ID")
 
-        greetings_col.update_one(
-            {"guild_id": ctx.guild.id},
-            {"$set": {"channel_id": channel_id}},
-            upsert=True
-        )
+        # ❌ already set check
+        existing = greetings_col.find_one({
+            "guild_id": ctx.guild.id
+        })
+        if existing:
+            return await ctx.reply(
+                "⚠️ Welcome is already set. Use `!delwelcome` first."
+            )
 
-        await ctx.reply(f"✅ Greetings channel set to {channel.mention}")
+        greetings_col.insert_one({
+            "guild_id": ctx.guild.id,
+            "channel_id": channel_id
+        })
 
-    # -------- TEST GREETINGS --------
+        await ctx.reply(f"✅ Welcome channel set to {channel.mention}")
+
+    # -------- DELETE WELCOME --------
+    @commands.command(name="delwelcome")
+    @is_admin()
+    async def delete_welcome(self, ctx):
+        result = greetings_col.find_one_and_delete({
+            "guild_id": ctx.guild.id
+        })
+
+        if not result:
+            return await ctx.reply("❌ Welcome is not set.")
+
+        await ctx.reply("✅ Welcome system deleted successfully.")
+
+    # -------- TEST WELCOME --------
     @commands.command(name="testgreetings")
     @is_admin()
     async def test_greetings(self, ctx):
-        data = greetings_col.find_one(
-            {"guild_id": ctx.guild.id}
-        )
+        data = greetings_col.find_one({
+            "guild_id": ctx.guild.id
+        })
 
         if not data:
-            return await ctx.reply("❌ Greetings channel not set")
+            return await ctx.reply("❌ Welcome is not set.")
 
         channel = ctx.guild.get_channel(data["channel_id"])
         if not channel:
-            return await ctx.reply("❌ Saved channel not found")
+            return await ctx.reply("❌ Saved channel not found.")
 
         await channel.send(
             f"{ctx.author.mention} welcome to the server"
@@ -55,9 +76,9 @@ class Greetings(commands.Cog):
     # -------- AUTO WELCOME ON JOIN --------
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        data = greetings_col.find_one(
-            {"guild_id": member.guild.id}
-        )
+        data = greetings_col.find_one({
+            "guild_id": member.guild.id
+        })
 
         if not data:
             return

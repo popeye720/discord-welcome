@@ -8,7 +8,7 @@ import os
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
 # ===============================
-# 🔘 DM BUTTON VIEW
+# 🔘 DM BUTTON VIEW (PERSISTENT)
 # ===============================
 class GuildActionView(View):
     def __init__(self, bot, guild_id: int):
@@ -26,7 +26,11 @@ class GuildActionView(View):
         return True
 
     # 🚫 BLACKLIST BUTTON
-    @discord.ui.button(label="Blacklist Server", style=discord.ButtonStyle.danger)
+    @discord.ui.button(
+        label="Blacklist Server",
+        style=discord.ButtonStyle.danger,
+        custom_id="guild_blacklist_button"  # 👈 REQUIRED
+    )
     async def blacklist_button(self, interaction: discord.Interaction, button: Button):
 
         guilds_col.update_one(
@@ -45,7 +49,11 @@ class GuildActionView(View):
         )
 
     # 🚪 LEAVE BUTTON
-    @discord.ui.button(label="Leave Server", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(
+        label="Leave Server",
+        style=discord.ButtonStyle.secondary,
+        custom_id="guild_leave_button"  # 👈 REQUIRED
+    )
     async def leave_button(self, interaction: discord.Interaction, button: Button):
 
         guild = self.bot.get_guild(self.guild_id)
@@ -70,9 +78,6 @@ class GuildManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ===============================
-    # 🆕 Bot added to server
-    # ===============================
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild):
 
@@ -107,17 +112,11 @@ class GuildManager(commands.Cog):
 
         print(f"✅ Joined & saved: {guild.name} ({guild.id})")
 
-    # ===============================
-    # ❌ Bot removed
-    # ===============================
     @commands.Cog.listener()
     async def on_guild_remove(self, guild: discord.Guild):
         guilds_col.delete_one({"guild_id": guild.id})
         print(f"❌ Removed guild: {guild.name}")
 
-    # ===============================
-    # 🔄 Restart blacklist check
-    # ===============================
     @commands.Cog.listener()
     async def on_ready(self):
         print("🔍 Checking blacklisted servers...")
@@ -129,15 +128,9 @@ class GuildManager(commands.Cog):
                 await guild.leave()
                 guilds_col.delete_one({"guild_id": guild.id})
 
-    # ===============================
-    # 🔐 DM + OWNER CHECK
-    # ===============================
     def _check_dm_owner(self, ctx):
         return ctx.guild is None and ctx.author.id == OWNER_ID
 
-    # ===============================
-    # 📜 List servers (DM)
-    # ===============================
     @commands.command()
     async def guilds(self, ctx):
         if not self._check_dm_owner(ctx):
@@ -154,9 +147,6 @@ class GuildManager(commands.Cog):
 
         await ctx.send(msg)
 
-    # ===============================
-    # 🚫 Blacklist (DM COMMAND)
-    # ===============================
     @commands.command()
     async def blacklist(self, ctx, guild_id: int):
         if not self._check_dm_owner(ctx):
@@ -174,9 +164,6 @@ class GuildManager(commands.Cog):
 
         await ctx.send(f"🚫 Server `{guild_id}` blacklisted & bot left.")
 
-    # ===============================
-    # ♻️ Unblacklist (DM COMMAND)
-    # ===============================
     @commands.command()
     async def unblacklist(self, ctx, guild_id: int):
         if not self._check_dm_owner(ctx):
@@ -190,9 +177,6 @@ class GuildManager(commands.Cog):
 
         await ctx.send(f"✅ Server `{guild_id}` unblacklisted.")
 
-    # ===============================
-    # 🚪 Leave server (DM COMMAND)
-    # ===============================
     @commands.command()
     async def leave(self, ctx, guild_id: int):
         if not self._check_dm_owner(ctx):

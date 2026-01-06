@@ -24,6 +24,10 @@ async def on_ready():
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
 
+    # 🔥 REGISTER GUILD MANAGER PERSISTENT VIEW
+    from cogs.guild_manager import GuildActionView
+    bot.add_view(GuildActionView(bot, guild_id=0))  # 👈 REQUIRED for restart support
+
 
 @bot.event
 async def on_guild_join(guild):

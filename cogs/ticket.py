@@ -78,7 +78,7 @@ class TicketButton(discord.ui.View):
                 ephemeral=True
             )
 
-        # ❌ PER GUILD ONLY ONE TICKET (IMPORTANT CHANGE)
+        # ❌ PER GUILD ONLY ONE TICKET
         existing = ticket_col.find_one({
             "guild_id": guild.id,
             "open": True
@@ -157,13 +157,10 @@ class TicketSystem(commands.Cog):
 
     @commands.command(name="createticket")
     async def createticket(self, ctx, channel_id: int):
-        await ctx.message.delete()
-
         channel = self.bot.get_channel(channel_id)
         if not channel or not channel.category:
             return await ctx.send(
-                "❌ Invalid channel or missing category.",
-                delete_after=5
+                "❌ Invalid channel or missing category."
             )
 
         ticket_panel_col.delete_many({
@@ -179,10 +176,8 @@ class TicketSystem(commands.Cog):
 
         embed = discord.Embed(
             title="🎫 Support Tickets",
-            description=(
-                "Need assistance? Click the button below to create a ticket.\n\n"
-                "Only **one ticket at a time** is allowed per server."
-            ),
+            description="Need assistance? Click the button below to create a ticket.\n\n"
+                        "**Only one ticket is allowed per server at a time.**",
             color=discord.Color.green()
         )
 
@@ -190,11 +185,9 @@ class TicketSystem(commands.Cog):
 
     @commands.command(name="deleteticket")
     async def deleteticket(self, ctx, channel_id: int):
-        await ctx.message.delete()
-
         channel = self.bot.get_channel(channel_id)
         if not channel:
-            return
+            return await ctx.send("❌ Invalid channel ID.")
 
         ticket_panel_col.delete_many({
             "guild_id": ctx.guild.id,

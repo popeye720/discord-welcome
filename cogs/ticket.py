@@ -60,45 +60,40 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # 🔎 get panel config from DB
+        # 🔎 get panel config
         panel = ticket_panel_col.find_one({
             "guild_id": guild.id,
             "panel_channel_id": interaction.channel.id
         })
         if not panel:
-            await interaction.response.send_message(
+            return await interaction.response.send_message(
                 "Ticket panel configuration not found.",
                 ephemeral=True
             )
-            await interaction.delete_original_response(delay=5)
-            return
 
         category = guild.get_channel(panel["category_id"])
         if not isinstance(category, discord.CategoryChannel):
-            await interaction.response.send_message(
+            return await interaction.response.send_message(
                 "Ticket category is no longer available.",
                 ephemeral=True
             )
-            await interaction.delete_original_response(delay=5)
-            return
 
-        # prevent duplicate ticket
+        # ❌ PER GUILD ONLY ONE TICKET (IMPORTANT CHANGE)
         existing = ticket_col.find_one({
             "guild_id": guild.id,
-            "user_id": user.id,
             "open": True
         })
         if existing:
             ch = guild.get_channel(existing["channel_id"])
             if ch:
-                await interaction.response.send_message(
-                    f"You already have an open ticket: {ch.mention}",
+                return await interaction.response.send_message(
+                    f"A ticket is already open in this server: {ch.mention}",
                     ephemeral=True
                 )
-                await interaction.delete_original_response(delay=5)
-                return
+            else:
+                ticket_col.delete_one({"_id": existing["_id"]})
 
-        # 🔒 permissions (NO inheritance)
+        # 🔒 permissions
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(
@@ -109,7 +104,6 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True),
         }
 
-        # admins / mods
         for role in guild.roles:
             if role.permissions.administrator:
                 overwrites[role] = discord.PermissionOverwrite(
@@ -149,12 +143,10 @@ class TicketButton(discord.ui.View):
             view=CloseTicketView()
         )
 
-        # ✅ ONLY CREATOR SEES + AUTO-HIDE
         await interaction.response.send_message(
             f"Your ticket has been created: {ticket_channel.mention}",
             ephemeral=True
         )
-        await interaction.delete_original_response(delay=5)
 
 
 # ================= COG =================
@@ -189,7 +181,7 @@ class TicketSystem(commands.Cog):
             title="🎫 Support Tickets",
             description=(
                 "Need assistance? Click the button below to create a ticket.\n\n"
-                "Our support team will respond as soon as possible."
+                "Only **one ticket at a time** is allowed per server."
             ),
             color=discord.Color.green()
         )

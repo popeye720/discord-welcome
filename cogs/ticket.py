@@ -60,16 +60,31 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # 🔎 get panel config
+        # 🔎 get panel config (ONLY ONE PER GUILD)
         panel = ticket_panel_col.find_one({
-            "guild_id": guild.id,
-            "panel_channel_id": interaction.channel.id
+            "guild_id": guild.id
         })
         if not panel:
             return await interaction.response.send_message(
-                "Ticket panel configuration not found.",
+                "Ticket system is not configured on this server.",
                 ephemeral=True
             )
+
+        # ❌ same user duplicate ticket block
+        existing = ticket_col.find_one({
+            "guild_id": guild.id,
+            "user_id": user.id,
+            "open": True
+        })
+        if existing:
+            ch = guild.get_channel(existing["channel_id"])
+            if ch:
+                return await interaction.response.send_message(
+                    f"You already have an open ticket: {ch.mention}",
+                    ephemeral=True
+                )
+            else:
+                ticket_col.delete_one({"_id": existing["_id"]})
 
         category = guild.get_channel(panel["category_id"])
         if not isinstance(category, discord.CategoryChannel):
@@ -77,21 +92,6 @@ class TicketButton(discord.ui.View):
                 "Ticket category is no longer available.",
                 ephemeral=True
             )
-
-        # ❌ PER GUILD ONLY ONE TICKET (IMPORTANT CHANGE)
-        existing = ticket_col.find_one({
-            "guild_id": guild.id,
-            "open": True
-        })
-        if existing:
-            ch = guild.get_channel(existing["channel_id"])
-            if ch:
-                return await interaction.response.send_message(
-                    f"A ticket is already open in this server: {ch.mention}",
-                    ephemeral=True
-                )
-            else:
-                ticket_col.delete_one({"_id": existing["_id"]})
 
         # 🔒 permissions
         overwrites = {
@@ -130,7 +130,8 @@ class TicketButton(discord.ui.View):
             title="Support Ticket",
             description="Please describe your issue and our team will assist you shortly.\nUse the **Close Ticket** button when resolved.",
             color=discord.Color.blurple()
-        )   
+        )
+
         await ticket_channel.send(
             content=user.mention,
             embed=embed,
@@ -149,21 +150,21 @@ class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # -------- SETUP TICKET SYSTEM (ONLY ONCE PER SERVER) --------
     @commands.command(name="createticket")
     async def createticket(self, ctx, channel_id: int):
-        await ctx.message.delete()
-
         channel = self.bot.get_channel(channel_id)
         if not channel or not channel.category:
-            return await ctx.send(
-                "❌ Invalid channel or missing category.",
-                delete_after=5
-            )
+            return await ctx.send("❌ Invalid channel or missing category.")
 
-        ticket_panel_col.delete_many({
-            "guild_id": ctx.guild.id,
-            "panel_channel_id": channel.id
+        # ❌ block multiple setup per guild
+        existing = ticket_panel_col.find_one({
+            "guild_id": ctx.guild.id
         })
+        if existing:
+            return await ctx.send(
+                "❌ Ticket system is already configured in this server."
+            )
 
         ticket_panel_col.insert_one({
             "guild_id": ctx.guild.id,
@@ -173,31 +174,30 @@ class TicketSystem(commands.Cog):
 
         embed = discord.Embed(
             title="🎫 Support Tickets",
-            description=(
-                "Need assistance? Click the button below to create a ticket.\n\n"
-            ),
+            description="Need assistance? Click the button below to create a ticket.",
             color=discord.Color.green()
         )
 
         await channel.send(embed=embed, view=TicketButton())
 
+    # -------- DELETE TICKET SYSTEM --------
     @commands.command(name="deleteticket")
-    async def deleteticket(self, ctx, channel_id: int):
-        await ctx.message.delete()
-
-        channel = self.bot.get_channel(channel_id)
-        if not channel:
-            return
-
-        ticket_panel_col.delete_many({
-            "guild_id": ctx.guild.id,
-            "panel_channel_id": channel.id
+    async def deleteticket(self, ctx):
+        panel = ticket_panel_col.find_one_and_delete({
+            "guild_id": ctx.guild.id
         })
 
-        async for msg in channel.history(limit=50):
-            if msg.author == self.bot.user and msg.components:
-                await msg.delete()
-                break
+        if not panel:
+            return await ctx.send("❌ Ticket system is not set up.")
+
+        channel = self.bot.get_channel(panel["panel_channel_id"])
+        if channel:
+            async for msg in channel.history(limit=50):
+                if msg.author == self.bot.user and msg.components:
+                    await msg.delete()
+                    break
+
+        await ctx.send("✅ Ticket system deleted successfully.")
 
 
 async def setup(bot):

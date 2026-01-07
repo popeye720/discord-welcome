@@ -33,7 +33,39 @@ class FunGames(commands.Cog):
             "channel_id": channel.id
         })
 
+        # ✅ Confirmation to admin
         await ctx.reply(f"✅ Fun games enabled in {channel.mention}")
+
+        # -------- EMBED HELP MESSAGE --------
+        embed = discord.Embed(
+            title="🎮 Fun Games",
+            description="Play simple fun games using the commands below!",
+            color=discord.Color.blurple()
+        )
+
+        embed.add_field(
+            name="🪙 !coinflip",
+            value="Flip a coin and get **Heads** or **Tails**.\nJust type `!coinflip`",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎲 !dice",
+            value="Roll a dice and get a random number from **1 to 6**.\nType `!dice`",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🎱 !8ball <question>",
+            value="Ask a yes/no question and get a fun answer.\nExample: `!8ball Will I win today?`",
+            inline=False
+        )
+
+        embed.set_footer(
+            text="Have fun and enjoy the games 😄"
+        )
+
+        await channel.send(embed=embed)
 
     # -------- DELETE FUN GAMES --------
     @commands.command(name="delfungames")
@@ -48,9 +80,7 @@ class FunGames(commands.Cog):
 
         channel = ctx.guild.get_channel(data["channel_id"])
         if channel:
-            await ctx.reply(
-                f"✅ Fun games disabled for {channel.mention}"
-            )
+            await ctx.reply(f"✅ Fun games disabled for {channel.mention}")
         else:
             await ctx.reply("✅ Fun games system deleted.")
 
@@ -60,6 +90,7 @@ class FunGames(commands.Cog):
         if not data:
             return False
 
+        # ❌ WRONG CHANNEL → DELETE
         if ctx.channel.id != data["channel_id"]:
             try:
                 await ctx.message.delete()
@@ -81,14 +112,8 @@ class FunGames(commands.Cog):
         if not await self.check_channel(ctx):
             return
 
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
-
         result = random.choice(["🪙 Heads", "🪙 Tails"])
-        msg = await ctx.send(f"{ctx.author.mention} → **{result}**")
-        await msg.delete(delay=5)
+        await ctx.send(f"{ctx.author.mention} → **{result}**")
 
     # -------- DICE --------
     @commands.command(name="dice")
@@ -97,16 +122,8 @@ class FunGames(commands.Cog):
         if not await self.check_channel(ctx):
             return
 
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
-
         roll = random.randint(1, 6)
-        msg = await ctx.send(
-            f"🎲 {ctx.author.mention} rolled **{roll}**"
-        )
-        await msg.delete(delay=5)
+        await ctx.send(f"🎲 {ctx.author.mention} rolled **{roll}**")
 
     # -------- 8BALL --------
     @commands.command(name="8ball")
@@ -114,11 +131,6 @@ class FunGames(commands.Cog):
     async def eightball(self, ctx, *, question: str = None):
         if not await self.check_channel(ctx):
             return
-
-        try:
-            await ctx.message.delete()
-        except discord.Forbidden:
-            pass
 
         if not question:
             msg = await ctx.send("❓ Ask a question!")
@@ -133,20 +145,14 @@ class FunGames(commands.Cog):
             "Ask again later 🔮"
         ]
 
-        msg = await ctx.send(
+        await ctx.send(
             f"🎱 **Question:** {question}\n"
             f"**Answer:** {random.choice(responses)}"
         )
-        await msg.delete(delay=6)
 
     # -------- COOLDOWN HANDLER --------
     async def cooldown_error(self, ctx, error):
         if isinstance(error, commands.CommandOnCooldown):
-            try:
-                await ctx.message.delete()
-            except discord.Forbidden:
-                pass
-
             msg = await ctx.send(
                 f"⏳ {ctx.author.mention} wait **{error.retry_after:.1f}s**"
             )

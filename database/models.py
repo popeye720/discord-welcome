@@ -11,7 +11,6 @@ guilds_col = db["guilds"]
 freegames_col = db["free_games"]
 
 ytnotify_col = db["ytnotify"]
-
 ytnotify_col.create_index(
     [("guild_id", 1), ("yt_channel_id", 1)],
     unique=True
@@ -20,7 +19,8 @@ ytnotify_col.create_index(
 
 
 
-
+fungames_col = db["fun_games"]
+fungames_col.create_index("guild_id", unique=True)
 
 serverstats_col = db["server_stats"]
 serverstats_col.create_index("guild_id", unique=True)

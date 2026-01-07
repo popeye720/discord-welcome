@@ -28,15 +28,8 @@ class DynamicRegisterModal(discord.ui.Modal):
         answers = {q: self.inputs[q].value for q in self.questions}
 
         form_responses_col.update_one(
-            {
-                "guild_id": self.guild_id,
-                "user_id": self.user.id
-            },
-            {
-                "$set": {
-                    "answers": answers
-                }
-            },
+            {"guild_id": self.guild_id, "user_id": self.user.id},
+            {"$set": {"answers": answers}},
             upsert=True
         )
 
@@ -120,6 +113,13 @@ class Forms(commands.Cog):
     @commands.command(name="setform")
     @is_admin()
     async def set_form(self, ctx, channel_id: int, *, raw: str):
+        # 🚫 only ONE form per server
+        if forms_col.find_one({"guild_id": ctx.guild.id}):
+            return await ctx.reply(
+                "❌ A form is already set for this server.\n"
+                "Use `!delform` first, then create a new form."
+            )
+
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
             return await ctx.reply("❌ Invalid channel ID.")
@@ -158,17 +158,12 @@ class Forms(commands.Cog):
 
         msg = await channel.send(embed=embed, view=UserFormView(ctx.guild.id))
 
-        forms_col.update_one(
-            {"guild_id": ctx.guild.id},
-            {
-                "$set": {
-                    "channel_id": channel_id,
-                    "message_id": msg.id,
-                    "questions": questions
-                }
-            },
-            upsert=True
-        )
+        forms_col.insert_one({
+            "guild_id": ctx.guild.id,
+            "channel_id": channel_id,
+            "message_id": msg.id,
+            "questions": questions
+        })
 
         await ctx.reply("✅ Form configured successfully.")
 
@@ -200,7 +195,6 @@ class Forms(commands.Cog):
     async def delete_form(self, ctx, flag: str = None):
         form = forms_col.find_one({"guild_id": ctx.guild.id})
 
-        # delete panel if exists
         if form and "channel_id" in form and "message_id" in form:
             channel = ctx.guild.get_channel(form["channel_id"])
             if channel:
@@ -212,10 +206,7 @@ class Forms(commands.Cog):
 
         if flag == "--all":
             forms_col.delete_one({"guild_id": ctx.guild.id})
-            result = form_responses_col.delete_many({
-                "guild_id": ctx.guild.id
-            })
-
+            result = form_responses_col.delete_many({"guild_id": ctx.guild.id})
             return await ctx.reply(
                 f"🗑️ Form panel deleted.\n"
                 f"🧹 Deleted **{result.deleted_count}** user responses."

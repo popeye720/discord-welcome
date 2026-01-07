@@ -3,21 +3,30 @@ from discord.ext import commands
 from database.models import forms_col, form_responses_col
 
 
-# ---------------- MODAL ----------------
-class RegisterModal(discord.ui.Modal, title="Server Registration"):
-    name = discord.ui.TextInput(label="Your Name", max_length=50)
-    age = discord.ui.TextInput(label="Your Age", max_length=2)
-    reason = discord.ui.TextInput(
-        label="Why do you want to join?",
-        style=discord.TextStyle.paragraph
-    )
-
-    def __init__(self, guild_id, user):
-        super().__init__()
+# ================= MODAL =================
+class DynamicRegisterModal(discord.ui.Modal):
+    def __init__(self, guild_id, user, questions, old_answers=None):
+        super().__init__(title="Registration Form")
         self.guild_id = guild_id
         self.user = user
+        self.questions = questions
+        self.inputs = {}
+
+        old_answers = old_answers or {}
+
+        for q in questions:
+            inp = discord.ui.TextInput(
+                label=q,
+                style=discord.TextStyle.short,
+                default=old_answers.get(q, ""),
+                max_length=100
+            )
+            self.inputs[q] = inp
+            self.add_item(inp)
 
     async def on_submit(self, interaction: discord.Interaction):
+        answers = {q: self.inputs[q].value for q in self.questions}
+
         form_responses_col.update_one(
             {
                 "guild_id": self.guild_id,
@@ -25,33 +34,56 @@ class RegisterModal(discord.ui.Modal, title="Server Registration"):
             },
             {
                 "$set": {
-                    "name": self.name.value,
-                    "age": self.age.value,
-                    "reason": self.reason.value
+                    "answers": answers
                 }
             },
             upsert=True
         )
 
         await interaction.response.send_message(
-            "✅ Your form has been submitted!",
+            "✅ Your form has been submitted successfully!",
             ephemeral=True
         )
 
 
-# ---------------- USER VIEW ----------------
+# ================= USER VIEW =================
 class UserFormView(discord.ui.View):
     def __init__(self, guild_id):
         super().__init__(timeout=None)
         self.guild_id = guild_id
 
-    @discord.ui.button(label="📝 Register", style=discord.ButtonStyle.success, custom_id="form_register")
-    async def register(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(
+        label="📝 Register / Edit",
+        style=discord.ButtonStyle.success,
+        custom_id="form_register_edit"
+    )
+    async def register_edit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        form = forms_col.find_one({"guild_id": interaction.guild.id})
+        if not form:
+            return await interaction.response.send_message(
+                "❌ Form is not configured.",
+                ephemeral=True
+            )
+
+        existing = form_responses_col.find_one({
+            "guild_id": interaction.guild.id,
+            "user_id": interaction.user.id
+        })
+
         await interaction.response.send_modal(
-            RegisterModal(interaction.guild.id, interaction.user)
+            DynamicRegisterModal(
+                interaction.guild.id,
+                interaction.user,
+                form["questions"],
+                existing["answers"] if existing else None
+            )
         )
 
-    @discord.ui.button(label="❌ Delete", style=discord.ButtonStyle.danger, custom_id="form_delete")
+    @discord.ui.button(
+        label="❌ Delete",
+        style=discord.ButtonStyle.danger,
+        custom_id="form_delete"
+    )
     async def delete(self, interaction: discord.Interaction, button: discord.ui.Button):
         deleted = form_responses_col.find_one_and_delete({
             "guild_id": interaction.guild.id,
@@ -60,7 +92,7 @@ class UserFormView(discord.ui.View):
 
         if not deleted:
             return await interaction.response.send_message(
-                "❌ You have no form submitted.",
+                "❌ You have not submitted any form.",
                 ephemeral=True
             )
 
@@ -70,7 +102,7 @@ class UserFormView(discord.ui.View):
         )
 
 
-# ---------------- ADMIN COMMANDS ----------------
+# ================= ADMIN COG =================
 class Forms(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -86,27 +118,58 @@ class Forms(commands.Cog):
     # -------- SET FORM --------
     @commands.command(name="setform")
     @is_admin()
-    async def set_form(self, ctx, channel_id: int):
+    async def set_form(self, ctx, channel_id: int, *, raw: str):
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
-            return await ctx.reply("❌ Invalid channel ID")
+            return await ctx.reply("❌ Invalid channel ID.")
+
+        lines = [l.strip() for l in raw.splitlines() if l.strip()]
+        questions = []
+
+        i = 0
+        while i < len(lines):
+            if not lines[i].startswith("--q"):
+                return await ctx.reply(
+                    "❌ Invalid format.\n\n"
+                    "**Correct Example:**\n"
+                    "`!setform <channel_id>`\n"
+                    "`--qTEAM NAME`\n"
+                    "`--ans`\n"
+                    "`--qPLAYER IGN`\n"
+                    "`--ans`"
+                )
+
+            question = lines[i][3:].strip()
+            if not question or i + 1 >= len(lines) or lines[i + 1] != "--ans":
+                return await ctx.reply("❌ Each `--q` must be followed by `--ans`.")
+
+            questions.append(question)
+            i += 2
+
+        if not 1 <= len(questions) <= 5:
+            return await ctx.reply("❌ You can add **1 to 5 questions only**.")
 
         forms_col.update_one(
             {"guild_id": ctx.guild.id},
-            {"$set": {"channel_id": channel_id}},
+            {
+                "$set": {
+                    "channel_id": channel_id,
+                    "questions": questions
+                }
+            },
             upsert=True
         )
 
         embed = discord.Embed(
             title="📋 Registration Form",
-            description="Click the button below to register.",
+            description="Click the button below to **Register / Edit** your form.",
             color=discord.Color.gold()
         )
 
         await channel.send(embed=embed, view=UserFormView(ctx.guild.id))
-        await ctx.reply("✅ Form system enabled.")
+        await ctx.reply("✅ Form configured successfully.")
 
-    # -------- VIEW SUBMISSION --------
+    # -------- VIEW FORM --------
     @commands.command(name="viewform")
     @is_admin()
     async def view_form(self, ctx, user: discord.Member):
@@ -119,14 +182,34 @@ class Forms(commands.Cog):
             return await ctx.reply("❌ No form found for this user.")
 
         embed = discord.Embed(
-            title="📄 Form Submission",
+            title=f"📄 Form Submission — {user}",
             color=discord.Color.blue()
         )
-        embed.add_field(name="Name", value=data["name"], inline=False)
-        embed.add_field(name="Age", value=data["age"], inline=False)
-        embed.add_field(name="Reason", value=data["reason"], inline=False)
+
+        for q, ans in data["answers"].items():
+            embed.add_field(name=q, value=ans or "N/A", inline=False)
 
         await ctx.reply(embed=embed)
+
+    # -------- DELETE FORM --------
+    @commands.command(name="delform")
+    @is_admin()
+    async def delete_form(self, ctx, flag: str = None):
+        form = forms_col.find_one({"guild_id": ctx.guild.id})
+        if not form:
+            return await ctx.reply("❌ No form is currently set.")
+
+        forms_col.delete_one({"guild_id": ctx.guild.id})
+
+        if flag == "--all":
+            form_responses_col.delete_many({"guild_id": ctx.guild.id})
+            await ctx.reply("🗑️ Form **and all user responses** deleted.")
+        else:
+            await ctx.reply(
+                "🗑️ Form deleted.\n"
+                "ℹ️ User responses are still saved.\n"
+                "Use `!delform --all` to delete everything."
+            )
 
 
 async def setup(bot):

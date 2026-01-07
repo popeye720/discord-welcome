@@ -16,8 +16,11 @@ ytnotify_col.create_index(
     unique=True
 )
 
-
-
+scheduled_embeds_col = db["scheduled_embeds"]
+scheduled_embeds_col.create_index(
+    [("guild_id", 1), ("schedule_id", 1)],
+    unique=True
+)
 
 fungames_col = db["fun_games"]
 fungames_col.create_index("guild_id", unique=True)

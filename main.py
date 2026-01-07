@@ -59,6 +59,8 @@ async def main():
         await bot.load_extension("cogs.profile")
         await bot.load_extension("cogs.fungames")
         await bot.load_extension("cogs.ping")
+        await bot.load_extension("cogs.scheduled_embeds")
+
 
 
 

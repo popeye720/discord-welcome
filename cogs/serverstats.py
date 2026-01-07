@@ -25,11 +25,11 @@ class ServerStats(commands.Cog):
         if serverstats_col.find_one({"guild_id": guild.id}):
             return await ctx.reply("⚠️ Server stats already set.")
 
-        # Create category at top
-        category = await guild.create_category(
-            name="📊 Server Stats",
-            position=0
-        )
+        # Create category
+        category = await guild.create_category(name="📊 Server Stats")
+
+        # 🔥 FORCE CATEGORY TO VERY TOP
+        await category.edit(position=0)
 
         members = sum(1 for m in guild.members if not m.bot)
         bots = sum(1 for m in guild.members if m.bot)

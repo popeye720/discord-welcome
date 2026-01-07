@@ -48,6 +48,7 @@ async def main():
         await bot.load_extension("cogs.dm")
         await bot.load_extension("cogs.serverprofile")
         await bot.load_extension("cogs.greetings")
+        await bot.load_extension("cogs.serverstats")
         #await bot.load_extension("cogs.streammode")
         #await bot.load_extension("cogs.clip")
         await bot.load_extension("cogs.antispam")

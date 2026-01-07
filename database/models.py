@@ -16,3 +16,11 @@ ytnotify_col.create_index(
     [("guild_id", 1), ("yt_channel_id", 1)],
     unique=True
 )
+
+
+
+
+
+
+serverstats_col = db["server_stats"]
+serverstats_col.create_index("guild_id", unique=True)

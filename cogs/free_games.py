@@ -11,19 +11,29 @@ class FreeGames(commands.Cog):
         self.bot = bot
         self.collection = freegames_col
 
-        # indexes
-        self.collection.create_index("guild_id", unique=True)
+        # 🔒 SAFE INDEX CREATION
+        try:
+            self.collection.create_index("guild_id", unique=True)
+        except Exception as e:
+            print("Index error:", e)
 
-        self.session = aiohttp.ClientSession()
+        self.session = None  # ⚠️ DO NOT create ClientSession here
+
+    # ===============================
+    # COG LOAD / UNLOAD
+    # ===============================
 
     async def cog_load(self):
-        # start task only AFTER bot is ready
         await self.bot.wait_until_ready()
+        self.session = aiohttp.ClientSession()
         self.check_free_games.start()
+        print("✅ FreeGames cog loaded")
 
-    def cog_unload(self):
+    async def cog_unload(self):
         self.check_free_games.cancel()
-        asyncio.create_task(self.session.close())
+        if self.session:
+            await self.session.close()
+        print("❌ FreeGames cog unloaded")
 
     # ===============================
     # ADMIN COMMANDS
@@ -43,12 +53,10 @@ class FreeGames(commands.Cog):
             if not role:
                 return await ctx.send("❌ Invalid role ID.")
 
-        # 🔒 ONE CHANNEL PER SERVER
-        existing = self.collection.find_one({"guild_id": ctx.guild.id})
-        if existing:
+        # 🔒 ONE CONFIG PER SERVER
+        if self.collection.find_one({"guild_id": ctx.guild.id}):
             return await ctx.send(
-                "❌ Free games already enabled in this server.\n"
-                "Use `!removefg` first."
+                "❌ Free games already enabled.\nUse `!removefg` first."
             )
 
         self.collection.insert_one({
@@ -71,7 +79,7 @@ class FreeGames(commands.Cog):
 
         result = self.collection.delete_one({"guild_id": ctx.guild.id})
         if result.deleted_count == 0:
-            return await ctx.send("❌ Free games not enabled in this server.")
+            return await ctx.send("❌ Free games not enabled.")
 
         await ctx.send("✅ Free games updates disabled.")
 
@@ -133,13 +141,12 @@ class FreeGames(commands.Cog):
                         embed=embed,
                         view=view
                     )
-                    await asyncio.sleep(1)  # rate-limit safety
+                    await asyncio.sleep(1)
                 except discord.Forbidden:
                     continue
 
                 posted.append(game["id"])
 
-            # 🔒 LIMIT last_posted SIZE
             posted = posted[-100:]
 
             self.collection.update_one(
@@ -158,7 +165,8 @@ class FreeGames(commands.Cog):
         try:
             async with self.session.get(url, timeout=15) as resp:
                 data = await resp.json()
-        except Exception:
+        except Exception as e:
+            print("Epic error:", e)
             return games
 
         elements = (
@@ -206,14 +214,14 @@ class FreeGames(commands.Cog):
         try:
             async with self.session.get(url, timeout=15) as resp:
                 data = await resp.json()
-        except Exception:
+        except Exception as e:
+            print("Steam error:", e)
             return games
 
         for item in data.get("specials", {}).get("items", []):
             if item.get("discount_percent") != 100:
                 continue
 
-            # extra safety: skip free weekends
             if not item.get("is_free"):
                 continue
 

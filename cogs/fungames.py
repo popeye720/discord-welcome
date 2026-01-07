@@ -28,14 +28,6 @@ class FunGames(commands.Cog):
         if not channel or not isinstance(channel, discord.TextChannel):
             return await ctx.reply("❌ Invalid channel ID.")
 
-        fungames_col.insert_one({
-            "guild_id": ctx.guild.id,
-            "channel_id": channel.id
-        })
-
-        # ✅ Confirmation to admin
-        await ctx.reply(f"✅ Fun games enabled in {channel.mention}")
-
         # -------- EMBED HELP MESSAGE --------
         embed = discord.Embed(
             title="🎮 Fun Games",
@@ -45,27 +37,32 @@ class FunGames(commands.Cog):
 
         embed.add_field(
             name="🪙 !coinflip",
-            value="Flip a coin and get **Heads** or **Tails**.\nJust type `!coinflip`",
+            value="Flip a coin and get **Heads** or **Tails**.",
             inline=False
         )
-
         embed.add_field(
             name="🎲 !dice",
-            value="Roll a dice and get a random number from **1 to 6**.\nType `!dice`",
+            value="Roll a dice and get a number from **1 to 6**.",
             inline=False
         )
-
         embed.add_field(
             name="🎱 !8ball <question>",
-            value="Ask a yes/no question and get a fun answer.\nExample: `!8ball Will I win today?`",
+            value="Ask a yes/no question and get a fun answer.",
             inline=False
         )
 
-        embed.set_footer(
-            text="Have fun and enjoy the games 😄"
-        )
+        embed.set_footer(text="Have fun 😄")
 
-        await channel.send(embed=embed)
+        help_msg = await channel.send(embed=embed)
+
+        # -------- SAVE TO DB --------
+        fungames_col.insert_one({
+            "guild_id": ctx.guild.id,
+            "channel_id": channel.id,
+            "message_id": help_msg.id
+        })
+
+        await ctx.reply(f"✅ Fun games enabled in {channel.mention}")
 
     # -------- DELETE FUN GAMES --------
     @commands.command(name="delfungames")
@@ -80,6 +77,12 @@ class FunGames(commands.Cog):
 
         channel = ctx.guild.get_channel(data["channel_id"])
         if channel:
+            try:
+                msg = await channel.fetch_message(data["message_id"])
+                await msg.delete()
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                pass
+
             await ctx.reply(f"✅ Fun games disabled for {channel.mention}")
         else:
             await ctx.reply("✅ Fun games system deleted.")
@@ -90,7 +93,6 @@ class FunGames(commands.Cog):
         if not data:
             return False
 
-        # ❌ WRONG CHANNEL → DELETE
         if ctx.channel.id != data["channel_id"]:
             try:
                 await ctx.message.delete()
@@ -111,9 +113,9 @@ class FunGames(commands.Cog):
     async def coinflip(self, ctx):
         if not await self.check_channel(ctx):
             return
-
-        result = random.choice(["🪙 Heads", "🪙 Tails"])
-        await ctx.send(f"{ctx.author.mention} → **{result}**")
+        await ctx.send(
+            f"{ctx.author.mention} → **{random.choice(['🪙 Heads', '🪙 Tails'])}**"
+        )
 
     # -------- DICE --------
     @commands.command(name="dice")
@@ -121,9 +123,9 @@ class FunGames(commands.Cog):
     async def dice(self, ctx):
         if not await self.check_channel(ctx):
             return
-
-        roll = random.randint(1, 6)
-        await ctx.send(f"🎲 {ctx.author.mention} rolled **{roll}**")
+        await ctx.send(
+            f"🎲 {ctx.author.mention} rolled **{random.randint(1, 6)}**"
+        )
 
     # -------- 8BALL --------
     @commands.command(name="8ball")
@@ -137,12 +139,8 @@ class FunGames(commands.Cog):
             return await msg.delete(delay=3)
 
         responses = [
-            "Yes ✅",
-            "No ❌",
-            "Maybe 🤔",
-            "Definitely ✔️",
-            "I don't think so 😐",
-            "Ask again later 🔮"
+            "Yes ✅", "No ❌", "Maybe 🤔",
+            "Definitely ✔️", "Ask again later 🔮"
         ]
 
         await ctx.send(

@@ -43,7 +43,7 @@ class Embedder(commands.Cog):
             color=discord.Color.gold()
         )
 
-        # 🖼️ IMAGE → THUMB + MAIN IMAGE
+        # 🖼️ IMAGE SUPPORT
         if ctx.message.attachments:
             att = ctx.message.attachments[0]
             if att.content_type and att.content_type.startswith("image"):
@@ -58,11 +58,7 @@ class Embedder(commands.Cog):
         msg = await channel.send(
             content="@everyone" if ping_everyone else None,
             embed=embed,
-            allowed_mentions=discord.AllowedMentions(
-                everyone=ping_everyone,
-                roles=False,
-                users=False
-            )
+            allowed_mentions=discord.AllowedMentions(everyone=ping_everyone)
         )
 
         await ctx.send(
@@ -73,18 +69,16 @@ class Embedder(commands.Cog):
 
     # ================= EDIT EMBED =================
     @commands.command(name="embededit")
-    async def embed_edit(self, ctx, channel_id: int, message_id: int, *, new_message: str):
+    async def embed_edit(self, ctx, message_id: int, *, new_message: str):
         if not self.can_manage(ctx):
             return await ctx.send("❌ Only **Server Owner or Admin** can use this command.")
 
-        channel = self.bot.get_channel(channel_id)
-        if not channel:
-            return await ctx.send("❌ Invalid channel ID.")
+        channel = ctx.channel  # 👈 current channel only
 
         try:
             target = await channel.fetch_message(message_id)
         except discord.NotFound:
-            return await ctx.send("❌ Message not found.")
+            return await ctx.send("❌ Message not found in this channel.")
 
         if target.author.id != self.bot.user.id:
             return await ctx.send("❌ Only bot messages can be edited.")
@@ -110,13 +104,12 @@ class Embedder(commands.Cog):
         embed.description = new_message
         embed.color = discord.Color.gold()
 
-        # 🖼️ IMAGE LOGIC
+        # 🖼️ IMAGE UPDATE (optional)
         if ctx.message.attachments:
             att = ctx.message.attachments[0]
             if att.content_type and att.content_type.startswith("image"):
                 embed.set_thumbnail(url=att.url)
                 embed.set_image(url=att.url)
-        # else → old thumbnail + image remain
 
         embed.set_footer(
             text=f"Edited by {ctx.author}",
@@ -126,11 +119,7 @@ class Embedder(commands.Cog):
         await target.edit(
             content="@everyone" if ping_everyone else None,
             embed=embed,
-            allowed_mentions=discord.AllowedMentions(
-                everyone=ping_everyone,
-                roles=False,
-                users=False
-            )
+            allowed_mentions=discord.AllowedMentions(everyone=ping_everyone)
         )
 
         await ctx.send(f"✅ Embedded message `{message_id}` updated successfully.")

@@ -16,6 +16,7 @@ if not TOKEN:
     raise RuntimeError("TOKEN environment variable not set")
 
 
+
 @bot.event
 async def on_ready():
     print(f"✅ Bot logged in as {bot.user}")
@@ -29,6 +30,8 @@ async def on_ready():
     from cogs.guild_manager import GuildActionView
     bot.add_view(GuildActionView(bot, guild_id=0))  # 👈 REQUIRED for restart support
 
+    from cogs.forms import UserFormView
+    bot.add_view(UserFormView(guild_id=0))
 
 @bot.event
 async def on_guild_join(guild):

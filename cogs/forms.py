@@ -48,7 +48,7 @@ class DynamicRegisterModal(discord.ui.Modal):
 
 # ================= USER VIEW =================
 class UserFormView(discord.ui.View):
-    def __init__(self, guild_id):
+    def __init__(self, guild_id: int):
         super().__init__(timeout=None)
         self.guild_id = guild_id
 
@@ -107,6 +107,7 @@ class Forms(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    # -------- PERMISSION --------
     def is_admin():
         async def predicate(ctx):
             return (
@@ -139,26 +140,15 @@ class Forms(commands.Cog):
                     "`--ans`"
                 )
 
-            question = lines[i][3:].strip()
-            if not question or i + 1 >= len(lines) or lines[i + 1] != "--ans":
+            q = lines[i][3:].strip()
+            if not q or i + 1 >= len(lines) or lines[i + 1] != "--ans":
                 return await ctx.reply("❌ Each `--q` must be followed by `--ans`.")
 
-            questions.append(question)
+            questions.append(q)
             i += 2
 
         if not 1 <= len(questions) <= 5:
             return await ctx.reply("❌ You can add **1 to 5 questions only**.")
-
-        forms_col.update_one(
-            {"guild_id": ctx.guild.id},
-            {
-                "$set": {
-                    "channel_id": channel_id,
-                    "questions": questions
-                }
-            },
-            upsert=True
-        )
 
         embed = discord.Embed(
             title="📋 Registration Form",
@@ -166,7 +156,20 @@ class Forms(commands.Cog):
             color=discord.Color.gold()
         )
 
-        await channel.send(embed=embed, view=UserFormView(ctx.guild.id))
+        msg = await channel.send(embed=embed, view=UserFormView(ctx.guild.id))
+
+        forms_col.update_one(
+            {"guild_id": ctx.guild.id},
+            {
+                "$set": {
+                    "channel_id": channel_id,
+                    "message_id": msg.id,
+                    "questions": questions
+                }
+            },
+            upsert=True
+        )
+
         await ctx.reply("✅ Form configured successfully.")
 
     # -------- VIEW FORM --------
@@ -196,20 +199,38 @@ class Forms(commands.Cog):
     @is_admin()
     async def delete_form(self, ctx, flag: str = None):
         form = forms_col.find_one({"guild_id": ctx.guild.id})
+
+        # delete panel if exists
+        if form and "channel_id" in form and "message_id" in form:
+            channel = ctx.guild.get_channel(form["channel_id"])
+            if channel:
+                try:
+                    msg = await channel.fetch_message(form["message_id"])
+                    await msg.delete()
+                except discord.NotFound:
+                    pass
+
+        if flag == "--all":
+            forms_col.delete_one({"guild_id": ctx.guild.id})
+            result = form_responses_col.delete_many({
+                "guild_id": ctx.guild.id
+            })
+
+            return await ctx.reply(
+                f"🗑️ Form panel deleted.\n"
+                f"🧹 Deleted **{result.deleted_count}** user responses."
+            )
+
         if not form:
             return await ctx.reply("❌ No form is currently set.")
 
         forms_col.delete_one({"guild_id": ctx.guild.id})
 
-        if flag == "--all":
-            form_responses_col.delete_many({"guild_id": ctx.guild.id})
-            await ctx.reply("🗑️ Form **and all user responses** deleted.")
-        else:
-            await ctx.reply(
-                "🗑️ Form deleted.\n"
-                "ℹ️ User responses are still saved.\n"
-                "Use `!delform --all` to delete everything."
-            )
+        await ctx.reply(
+            "🗑️ Form panel deleted. Form is now closed.\n"
+            "ℹ️ User responses are still saved.\n"
+            "Use `!delform --all` to delete everything."
+        )
 
 
 async def setup(bot):

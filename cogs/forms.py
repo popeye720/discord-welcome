@@ -91,7 +91,7 @@ class UserFormView(discord.ui.View):
 
         await interaction.response.send_message(
             "🗑️ Your form has been deleted.",
-            ephemeral=True
+                ephemeral=True
         )
 
 
@@ -171,6 +171,10 @@ class Forms(commands.Cog):
     @commands.command(name="viewform")
     @is_admin()
     async def view_form(self, ctx, user: discord.Member):
+        # 🛑 NEW GUARD
+        if not forms_col.find_one({"guild_id": ctx.guild.id}):
+            return await ctx.reply("❌ No form is currently set.")
+
         data = form_responses_col.find_one({
             "guild_id": ctx.guild.id,
             "user_id": user.id
@@ -195,7 +199,12 @@ class Forms(commands.Cog):
     async def delete_form(self, ctx, flag: str = None):
         form = forms_col.find_one({"guild_id": ctx.guild.id})
 
-        if form and "channel_id" in form and "message_id" in form:
+        # 🛑 NEW GUARD
+        if not form:
+            return await ctx.reply("❌ No form is currently set.")
+
+        # delete panel if exists
+        if "channel_id" in form and "message_id" in form:
             channel = ctx.guild.get_channel(form["channel_id"])
             if channel:
                 try:
@@ -211,9 +220,6 @@ class Forms(commands.Cog):
                 f"🗑️ Form panel deleted.\n"
                 f"🧹 Deleted **{result.deleted_count}** user responses."
             )
-
-        if not form:
-            return await ctx.reply("❌ No form is currently set.")
 
         forms_col.delete_one({"guild_id": ctx.guild.id})
 

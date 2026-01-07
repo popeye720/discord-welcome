@@ -151,7 +151,7 @@ class Forms(commands.Cog):
         await ctx.reply("✅ Form configured successfully.")
 
     # -------- DELETE FORM --------
-    @commands.command(name="delform")
+    @commands.command(name="closeform")
     @is_admin()
     async def delete_form(self, ctx, flag: str = None):
         form = forms_col.find_one({"guild_id": ctx.guild.id})

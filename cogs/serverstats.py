@@ -25,26 +25,24 @@ class ServerStats(commands.Cog):
         if serverstats_col.find_one({"guild_id": guild.id}):
             return await ctx.reply("⚠️ Server stats already set.")
 
-        category = await guild.create_category(name="📊 Server Stats")
+        category = await guild.create_category("📊 Server Stats")
         await category.edit(position=0)
 
-        members = sum(1 for m in guild.members if not m.bot)
+        members = len(guild.members)
         bots = sum(1 for m in guild.members if m.bot)
         online = sum(
             1 for m in guild.members
-            if not m.bot and m.status != discord.Status.offline
+            if m.status != discord.Status.offline
         )
 
         member_vc = await guild.create_voice_channel(
-            name=f"👥 Members: {members}", category=category
+            f"👥 Members: {members}", category=category
         )
-
         bot_vc = await guild.create_voice_channel(
-            name=f"🤖 Bots: {bots}", category=category
+            f"🤖 Bots: {bots}", category=category
         )
-
         online_vc = await guild.create_voice_channel(
-            name=f"🟢 Online: {online}", category=category
+            f"🟢 Online: {online}", category=category
         )
 
         for vc in (member_vc, bot_vc, online_vc):
@@ -79,11 +77,11 @@ class ServerStats(commands.Cog):
                 {"$set": {"category_id": category.id}}
             )
 
-        members = sum(1 for m in guild.members if not m.bot)
+        members = len(guild.members)
         bots = sum(1 for m in guild.members if m.bot)
         online = sum(
             1 for m in guild.members
-            if not m.bot and m.status != discord.Status.offline
+            if m.status != discord.Status.offline
         )
 
         if not member_vc:
@@ -131,11 +129,11 @@ class ServerStats(commands.Cog):
         if not member_vc or not bot_vc or not online_vc:
             return
 
-        members = sum(1 for m in guild.members if not m.bot)
+        members = len(guild.members)
         bots = sum(1 for m in guild.members if m.bot)
         online = sum(
             1 for m in guild.members
-            if not m.bot and m.status != discord.Status.offline
+            if m.status != discord.Status.offline
         )
 
         try:

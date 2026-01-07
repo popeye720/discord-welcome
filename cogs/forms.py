@@ -111,7 +111,7 @@ class Forms(commands.Cog):
         if forms_col.find_one({"guild_id": ctx.guild.id}):
             return await ctx.reply(
                 "❌ A form is already set for this server.\n"
-                "Use `!delform` first, then create a new form."
+                "Use `!closeform` first, then create a new form."
             )
 
         channel = ctx.guild.get_channel(channel_id)

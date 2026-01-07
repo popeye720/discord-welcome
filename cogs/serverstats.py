@@ -53,7 +53,7 @@ class ServerStats(commands.Cog):
 
         await ctx.reply("✅ Server stats setup completed!")
 
-    # -------- ENSURE / SELF HEAL --------
+    # -------- ENSURE (ONLY RECREATE IF DELETED) --------
     async def ensure_channels(self, guild: discord.Guild):
         data = serverstats_col.find_one({"guild_id": guild.id})
         if not data:
@@ -67,11 +67,14 @@ class ServerStats(commands.Cog):
         if not category:
             category = await guild.create_category("📊 Server Stats")
             await category.edit(position=0)
+            serverstats_col.update_one(
+                {"guild_id": guild.id},
+                {"$set": {"category_id": category.id}}
+            )
 
         members = sum(1 for m in guild.members if not m.bot)
         bots = sum(1 for m in guild.members if m.bot)
 
-        # Recreate member VC
         if not member_vc:
             member_vc = await guild.create_voice_channel(
                 name=f"👥 Members: {members}",
@@ -83,7 +86,6 @@ class ServerStats(commands.Cog):
                 {"$set": {"member_vc_id": member_vc.id}}
             )
 
-        # Recreate bot VC
         if not bot_vc:
             bot_vc = await guild.create_voice_channel(
                 name=f"🤖 Bots: {bots}",
@@ -95,25 +97,26 @@ class ServerStats(commands.Cog):
                 {"$set": {"bot_vc_id": bot_vc.id}}
             )
 
-        return category, member_vc, bot_vc
-
-    # -------- UPDATE COUNTS (AUTO RENAME FIX) --------
+    # -------- UPDATE COUNTS (NO RENAME LOGIC) --------
     async def update_stats(self, guild: discord.Guild):
-        result = await self.ensure_channels(guild)
-        if not result:
+        data = serverstats_col.find_one({"guild_id": guild.id})
+        if not data:
             return
 
-        _, member_vc, bot_vc = result
+        await self.ensure_channels(guild)
+
+        member_vc = guild.get_channel(data["member_vc_id"])
+        bot_vc = guild.get_channel(data["bot_vc_id"])
+
+        if not member_vc or not bot_vc:
+            return
 
         members = sum(1 for m in guild.members if not m.bot)
         bots = sum(1 for m in guild.members if m.bot)
 
         try:
-            if member_vc.name != f"👥 Members: {members}":
-                await member_vc.edit(name=f"👥 Members: {members}")
-
-            if bot_vc.name != f"🤖 Bots: {bots}":
-                await bot_vc.edit(name=f"🤖 Bots: {bots}")
+            await member_vc.edit(name=f"👥 Members: {members}")
+            await bot_vc.edit(name=f"🤖 Bots: {bots}")
         except discord.HTTPException:
             pass
 
@@ -126,12 +129,19 @@ class ServerStats(commands.Cog):
     async def on_member_remove(self, member):
         await self.update_stats(member.guild)
 
-    # -------- IF VC OR CATEGORY DELETED --------
+    # -------- IF USER MANUALLY DELETES CHANNEL --------
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel):
-        if not isinstance(channel.guild, discord.Guild):
-            return
-        await self.update_stats(channel.guild)
+        data = serverstats_col.find_one({"guild_id": channel.guild.id})
+        if not data:
+            return  # system already deleted
+
+        if channel.id in (
+            data["category_id"],
+            data["member_vc_id"],
+            data["bot_vc_id"]
+        ):
+            await self.update_stats(channel.guild)
 
     # -------- RESTART SAFE --------
     @commands.Cog.listener()
@@ -141,7 +151,7 @@ class ServerStats(commands.Cog):
             if guild:
                 await self.update_stats(guild)
 
-    # -------- DELETE SERVER STATS --------
+    # -------- DELETE SERVER STATS (FIXED) --------
     @commands.command(name="delserverstats")
     @is_admin()
     async def delserverstats(self, ctx):
@@ -149,6 +159,9 @@ class ServerStats(commands.Cog):
         data = serverstats_col.find_one({"guild_id": guild.id})
         if not data:
             return await ctx.reply("❌ Server stats system is not set.")
+
+        # 🔥 FIRST REMOVE FROM DB (VERY IMPORTANT)
+        serverstats_col.delete_one({"guild_id": guild.id})
 
         for cid in ("member_vc_id", "bot_vc_id", "category_id"):
             ch = guild.get_channel(data.get(cid))
@@ -158,7 +171,6 @@ class ServerStats(commands.Cog):
                 except discord.Forbidden:
                     pass
 
-        serverstats_col.delete_one({"guild_id": guild.id})
         await ctx.reply("✅ Server stats system deleted successfully.")
 
 

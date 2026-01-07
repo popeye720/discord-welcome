@@ -9,3 +9,10 @@ greetings_col = db["greetings"]
 autorole_col = db["auto_roles"]
 guilds_col = db["guilds"]
 freegames_col = db["free_games"]
+
+ytnotify_col = db["ytnotify"]
+
+ytnotify_col.create_index(
+    [("guild_id", 1), ("yt_channel_id", 1)],
+    unique=True
+)

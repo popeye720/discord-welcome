@@ -52,7 +52,7 @@ async def main():
         await bot.load_extension("cogs.antispam")
         await bot.load_extension("cogs.guild_manager")
         #await bot.load_extension("cogs.moderation")
-        #await bot.load_extension("cogs.joinleave")
+        await bot.load_extension("cogs.ytnotify")
         await bot.start(TOKEN)
 
 

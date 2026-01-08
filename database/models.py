@@ -46,3 +46,8 @@ antilinks_col.create_index("guild_id", unique=True)
 
 antispam_col = db["anti_spam"]
 antispam_col.create_index("guild_id", unique=True)
+
+
+
+streammode_col = db["stream_mode"]
+streammode_col.create_index("guild_id", unique=True)

@@ -60,17 +60,13 @@ class TicketButton(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # 🔎 get panel config (ONLY ONE PER GUILD)
-        panel = ticket_panel_col.find_one({
-            "guild_id": guild.id
-        })
+        panel = ticket_panel_col.find_one({"guild_id": guild.id})
         if not panel:
             return await interaction.response.send_message(
                 "Ticket system is not configured on this server.",
                 ephemeral=True
             )
 
-        # ❌ same user duplicate ticket block
         existing = ticket_col.find_one({
             "guild_id": guild.id,
             "user_id": user.id,
@@ -93,7 +89,6 @@ class TicketButton(discord.ui.View):
                 ephemeral=True
             )
 
-        # 🔒 permissions
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(
@@ -150,17 +145,21 @@ class TicketSystem(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # -------- SETUP TICKET SYSTEM (ONLY ONCE PER SERVER) --------
+    # -------- SETUP TICKET SYSTEM (ADMIN / OWNER ONLY) --------
     @commands.command(name="createticket")
+    @commands.guild_only()
     async def createticket(self, ctx, channel_id: int):
+        if not (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return await ctx.send("❌ Only **Admin or Server Owner** can set up tickets.")
+
         channel = self.bot.get_channel(channel_id)
         if not channel or not channel.category:
             return await ctx.send("❌ Invalid channel or missing category.")
 
-        # ❌ block multiple setup per guild
-        existing = ticket_panel_col.find_one({
-            "guild_id": ctx.guild.id
-        })
+        existing = ticket_panel_col.find_one({"guild_id": ctx.guild.id})
         if existing:
             return await ctx.send(
                 "❌ Ticket system is already configured in this server."
@@ -179,10 +178,18 @@ class TicketSystem(commands.Cog):
         )
 
         await channel.send(embed=embed, view=TicketButton())
+        await ctx.send("✅ Ticket system setup completed.")
 
-    # -------- DELETE TICKET SYSTEM --------
+    # -------- DELETE TICKET SYSTEM (ADMIN / OWNER ONLY) --------
     @commands.command(name="deleteticket")
+    @commands.guild_only()
     async def deleteticket(self, ctx):
+        if not (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return await ctx.send("❌ Only **Admin or Server Owner** can delete ticket system.")
+
         panel = ticket_panel_col.find_one_and_delete({
             "guild_id": ctx.guild.id
         })

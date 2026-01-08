@@ -1,34 +1,22 @@
 import discord
 from discord.ext import commands
 import pytchat
+import asyncio
 import re
 import time
-import asyncio
 from datetime import datetime, timezone
+from collections import deque
+
+
+MAX_CLIPS_PER_MINUTE = 1
 
 
 class Clip(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.chat_task = None
-        self.chat = None
-        self.video_id = None
-        self.script_start_time = None
-        self.base_stream_seconds = None
-        self.sync_system_time = None
-        self.clip_channel = None
+        self.sessions = {}  # guild_id -> session data
 
-    # =========================
-    # HELPERS
-    # =========================
-    def hms_24_to_seconds(self, time_str):
-        dt = datetime.strptime(time_str, "%H:%M:%S")
-        return dt.hour * 3600 + dt.minute * 60 + dt.second
-
-    def seconds_to_hms(self, seconds: int):
-        return f"{seconds//3600:02}:{(seconds%3600)//60:02}:{seconds%60:02}"
-
-    # 🔐 DISCORD OWNER + ADMIN CHECK
+    # ---------------- PERMISSION ----------------
     def can_manage(self, ctx):
         return (
             ctx.guild
@@ -38,147 +26,189 @@ class Clip(commands.Cog):
             )
         )
 
-    # =========================
-    # CLIP ON
-    # =========================
+    # ---------------- TIME HELPERS ----------------
+    def hms_to_seconds(self, t):
+        h, m, s = map(int, t.split(":"))
+        return h * 3600 + m * 60 + s
+
+    def seconds_to_hms(self, sec):
+        return f"{sec//3600:02}:{(sec%3600)//60:02}:{sec%60:02}"
+
+    # ================= CLIP ON =================
     @commands.command(name="clipon")
-    async def clipon(self, ctx, clip_channel: discord.TextChannel, stream_url: str):
+    @commands.guild_only()
+    async def clipon(self, ctx, channel: discord.TextChannel, stream_url: str):
         if not self.can_manage(ctx):
-            return await ctx.reply("You do not have permission to use this command.")
+            return await ctx.reply("❌ Admin / Owner only.")
 
-        if self.chat_task:
-            return await ctx.reply("Clip system is already running.")
+        if ctx.guild.id in self.sessions:
+            return await ctx.reply("⚠️ Clip system already running in this server.")
 
-        if not clip_channel.permissions_for(ctx.guild.me).send_messages:
-            return await ctx.reply("I cannot send messages in that channel.")
+        if not channel.permissions_for(ctx.guild.me).send_messages:
+            return await ctx.reply("❌ I cannot send messages in that channel.")
 
         match = re.search(r"(?:v=|\/live\/)([a-zA-Z0-9_-]+)", stream_url)
         if not match:
-            return await ctx.reply("Invalid YouTube Live URL.")
+            return await ctx.reply("❌ Invalid YouTube Live URL.")
 
-        self.video_id = match.group(1)
-        self.clip_channel = clip_channel
-        self.script_start_time = time.time()
-        self.base_stream_seconds = None
-        self.sync_system_time = None
+        video_id = match.group(1)
+        chat = pytchat.create(video_id=video_id)
 
-        self.chat = pytchat.create(video_id=self.video_id)
-        self.chat_task = asyncio.create_task(self.listen_chat())
+        session = {
+            "video_id": video_id,
+            "chat": chat,
+            "task": None,
+            "clip_channel_id": channel.id,
+            "script_start": time.time(),
+            "sync_base": None,
+            "sync_time": None,
+            "rate": deque()
+        }
+
+        task = asyncio.create_task(self.listen_chat(ctx.guild.id))
+        session["task"] = task
+
+        self.sessions[ctx.guild.id] = session
 
         await ctx.reply(
-            f"Clip system enabled.\n"
-            f"Stream ID: `{self.video_id}`\n"
-            f"Clip Channel: {clip_channel.mention}\n\n"
-            f"Use `!sync HH:MM:SS`"
+            f"✅ **Clip System Enabled**\n"
+            f"🎥 Stream ID: `{video_id}`\n"
+            f"📍 Channel: {channel.mention}\n\n"
+            f"Use `!sync HH:MM:SS` if needed."
         )
 
-    # =========================
-    # CLIP OFF
-    # =========================
+    # ================= CLIP OFF =================
     @commands.command(name="clipoff")
+    @commands.guild_only()
     async def clipoff(self, ctx):
         if not self.can_manage(ctx):
-            return await ctx.reply("You do not have permission to use this command.")
+            return await ctx.reply("❌ Admin / Owner only.")
 
-        if self.chat_task:
-            self.chat_task.cancel()
-            self.chat_task = None
-            self.chat = None
-            await ctx.reply("Clip system disabled.")
-        else:
-            await ctx.reply("Clip system is not running.")
+        session = self.sessions.pop(ctx.guild.id, None)
+        if not session:
+            return await ctx.reply("⚠️ Clip system is not running.")
 
-    # =========================
-    # SYNC
-    # =========================
+        session["task"].cancel()
+        session["chat"].terminate()
+
+        await ctx.reply("🛑 Clip system disabled.")
+
+    # ================= SYNC =================
     @commands.command(name="sync")
-    async def sync(self, ctx, *, time_str: str):
+    @commands.guild_only()
+    async def sync(self, ctx, time_str: str):
         if not self.can_manage(ctx):
-            return await ctx.reply("You do not have permission to use this command.")
+            return await ctx.reply("❌ Admin / Owner only.")
 
-        if not self.chat_task:
-            return await ctx.reply("Clip system is not active.")
+        session = self.sessions.get(ctx.guild.id)
+        if not session:
+            return await ctx.reply("⚠️ Clip system not running.")
 
         try:
-            self.base_stream_seconds = self.hms_24_to_seconds(time_str)
-            self.sync_system_time = time.time()
-            await ctx.reply(f"Synced at `{time_str}`.")
+            session["sync_base"] = self.hms_to_seconds(time_str)
+            session["sync_time"] = time.time()
+            await ctx.reply(f"✅ Synced at `{time_str}`")
         except Exception:
-            await ctx.reply("Invalid time format. Use HH:MM:SS.")
+            await ctx.reply("❌ Invalid format. Use HH:MM:SS")
 
-    # =========================
-    # YOUTUBE CHAT LISTENER
-    # =========================
-    async def listen_chat(self):
+    # ================= STATUS =================
+    @commands.command(name="statusclip")
+    @commands.guild_only()
+    async def statusclip(self, ctx):
+        session = self.sessions.get(ctx.guild.id)
+        if not session:
+            return await ctx.reply("🔴 Clip system OFF")
+
+        await ctx.reply(
+            f"🟢 Clip system ON\n"
+            f"🎥 Stream ID: `{session['video_id']}`"
+        )
+
+    # ================= CHAT LISTENER =================
+    async def listen_chat(self, guild_id: int):
+        session = self.sessions[guild_id]
+        chat = session["chat"]
+
         try:
-            while self.chat and self.chat.is_alive():
-                for c in self.chat.get().sync_items():
-                    text = c.message.strip()
+            while chat.is_alive():
+                for c in chat.get().sync_items():
+                    text = c.message.strip().lower()
 
-                    # only !clip command
-                    if not text.lower().startswith("!clip"):
+                    if not text.startswith("!clip"):
                         continue
 
-                    # 🔒 ONLY YOUTUBE OWNER OR MODERATOR
                     if not (c.author.isChatOwner or c.author.isChatModerator):
-                        continue  # viewers ignored completely
+                        continue
 
-                    parts = text.split(" ", 1)
-                    clip_name = parts[1] if len(parts) > 1 else "No name"
-
+                    # RATE LIMIT
                     now = time.time()
+                    rate = session["rate"]
+                    while rate and now - rate[0] > 60:
+                        rate.popleft()
 
-                    if self.base_stream_seconds is not None:
-                        seconds = int(
-                            self.base_stream_seconds
-                            + (now - self.sync_system_time)
+                    if len(rate) >= MAX_CLIPS_PER_MINUTE:
+                        continue
+
+                    rate.append(now)
+
+                    name = c.message[6:].strip() or "No name"
+
+                    if session["sync_base"] is not None:
+                        sec = int(
+                            session["sync_base"]
+                            + (now - session["sync_time"])
                         )
                     else:
-                        seconds = int(now - self.script_start_time)
+                        sec = int(now - session["script_start"])
 
-                    timestamp = self.seconds_to_hms(seconds)
-                    clip_url = (
+                    ts = self.seconds_to_hms(sec)
+                    url = (
                         f"https://www.youtube.com/watch?v="
-                        f"{self.video_id}&t={seconds}s"
+                        f"{session['video_id']}&t={sec}s"
                     )
+
+                    guild = self.bot.get_guild(guild_id)
+                    if not guild:
+                        continue
+
+                    channel = guild.get_channel(session["clip_channel_id"])
+                    if not channel:
+                        continue
 
                     role = "Owner" if c.author.isChatOwner else "Moderator"
 
                     embed = discord.Embed(
-                        title="Clip Requested",
+                        title="🎬 Clip Requested",
                         description=(
-                            f"User: {c.author.name} ({role})\n"
-                            f"Clip Name: {clip_name}\n"
-                            f"Timestamp: `{timestamp}`"
+                            f"**By:** {c.author.name} ({role})\n"
+                            f"**Name:** {name}\n"
+                            f"**Timestamp:** `{ts}`"
                         ),
                         color=discord.Color.red(),
                         timestamp=datetime.now(timezone.utc)
                     )
 
-                    embed.set_footer(text="YouTube Live Clip System")
-
                     view = discord.ui.View()
                     view.add_item(
                         discord.ui.Button(
-                            label="Open clip",
-                            url=clip_url,
+                            label="Open Clip",
+                            url=url,
                             style=discord.ButtonStyle.link
                         )
                     )
 
-                    await self.clip_channel.send(embed=embed, view=view)
+                    await channel.send(embed=embed, view=view)
 
                 await asyncio.sleep(1)
 
         except asyncio.CancelledError:
             pass
 
-    # =========================
-    # CLEANUP
-    # =========================
+    # ================= CLEANUP =================
     def cog_unload(self):
-        if self.chat_task:
-            self.chat_task.cancel()
+        for s in self.sessions.values():
+            s["task"].cancel()
+            s["chat"].terminate()
 
 
 async def setup(bot):

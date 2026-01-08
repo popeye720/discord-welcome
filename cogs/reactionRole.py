@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-
 from database.models import reactionrole_col
 
 
@@ -8,57 +7,62 @@ class ReactionRoleManager(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # ---------- SERVER OWNER CHECK ----------
+    # ---------- OWNER CHECK ----------
     def is_owner(self, ctx):
         return ctx.guild and ctx.author.id == ctx.guild.owner_id
 
     # ---------- ADD REACTION ROLE ----------
     @commands.command(name="addrole")
+    @commands.guild_only()
     async def add_role(self, ctx, channel_id: int, title: str, *, body: str):
         if not self.is_owner(ctx):
-            return await ctx.send("Only the server owner can use this command.")
+            return await ctx.send("❌ Only the **Server Owner** can use this command.")
 
-        channel = self.bot.get_channel(channel_id)
+        # duplicate title block
+        if reactionrole_col.find_one({"guild_id": ctx.guild.id, "title": title}):
+            return await ctx.send("❌ Reaction role with this title already exists.")
+
+        channel = ctx.guild.get_channel(channel_id)
         if not channel:
-            return await ctx.send("Invalid channel ID.")
+            return await ctx.send("❌ Invalid channel ID.")
 
         role_map = {}
-        description_lines = []
+        description = []
 
         for line in body.splitlines():
-            parts = line.rsplit(" ", 1)
-            if len(parts) != 2:
-                return await ctx.send(
-                    "Invalid format. Each line must end with an emoji."
-                )
+            try:
+                text, emoji = line.rsplit(" ", 1)
+            except ValueError:
+                return await ctx.send("❌ Each line must end with an emoji.")
 
-            text, emoji = parts
             role_name = text.split("-")[0].strip()
-
             role = discord.utils.get(ctx.guild.roles, name=role_name)
-            if not role:
-                return await ctx.send(f"Role not found: {role_name}")
 
-            role_map[emoji] = role_name
-            description_lines.append(f"{emoji} {text}")
+            if not role:
+                return await ctx.send(f"❌ Role not found: `{role_name}`")
+
+            role_map[str(emoji)] = role.id
+            description.append(f"{emoji} {text}")
 
         embed = discord.Embed(
             title=title,
-            description="\n".join(description_lines),
+            description="\n".join(description),
             color=discord.Color.blue()
         )
 
         message = await channel.send(embed=embed)
 
-        for emoji in role_map:
-            await message.add_reaction(emoji)
+        for emoji in role_map.keys():
+            try:
+                await message.add_reaction(emoji)
+            except:
+                pass
 
-        # 💾 SAVE TO DB
         reactionrole_col.insert_one({
             "guild_id": ctx.guild.id,
-            "title": title,
             "channel_id": channel.id,
             "message_id": message.id,
+            "title": title,
             "roles": role_map
         })
 
@@ -66,29 +70,28 @@ class ReactionRoleManager(commands.Cog):
 
     # ---------- REMOVE REACTION ROLE ----------
     @commands.command(name="removerole")
-    async def remove_role(self, ctx, channel_id: int, *, title: str):
+    @commands.guild_only()
+    async def remove_role(self, ctx, *, title: str):
         if not self.is_owner(ctx):
-            return await ctx.send("Only the server owner can use this command.")
+            return await ctx.send("❌ Only the **Server Owner** can use this command.")
 
-        data = reactionrole_col.find_one({
+        data = reactionrole_col.find_one_and_delete({
             "guild_id": ctx.guild.id,
             "title": title
         })
 
         if not data:
-            return await ctx.send("Reaction role with this title was not found.")
+            return await ctx.send("❌ Reaction role not found.")
 
-        channel = self.bot.get_channel(channel_id)
+        channel = ctx.guild.get_channel(data["channel_id"])
         if channel:
             try:
                 msg = await channel.fetch_message(data["message_id"])
                 await msg.delete()
-            except Exception:
+            except:
                 pass
 
-        reactionrole_col.delete_one({"_id": data["_id"]})
-
-        await ctx.send("🗑️ Reaction role message removed successfully.")
+        await ctx.send("🗑️ Reaction role removed successfully.")
 
     # ---------- REACTION ADD ----------
     @commands.Cog.listener()
@@ -111,11 +114,12 @@ class ReactionRoleManager(commands.Cog):
         if not member:
             return
 
-        role_name = data["roles"].get(payload.emoji.name)
-        if not role_name:
+        emoji_key = str(payload.emoji)
+        role_id = data["roles"].get(emoji_key)
+        if not role_id:
             return
 
-        role = discord.utils.get(guild.roles, name=role_name)
+        role = guild.get_role(role_id)
         if role:
             await member.add_roles(role)
 
@@ -137,11 +141,12 @@ class ReactionRoleManager(commands.Cog):
         if not member:
             return
 
-        role_name = data["roles"].get(payload.emoji.name)
-        if not role_name:
+        emoji_key = str(payload.emoji)
+        role_id = data["roles"].get(emoji_key)
+        if not role_id:
             return
 
-        role = discord.utils.get(guild.roles, name=role_name)
+        role = guild.get_role(role_id)
         if role:
             await member.remove_roles(role)
 

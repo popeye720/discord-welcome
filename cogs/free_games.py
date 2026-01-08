@@ -4,6 +4,10 @@ import aiohttp
 from datetime import datetime
 from database.models import freegames_col
 import asyncio
+import time
+
+
+CLEANUP_AFTER_SECONDS = 60 * 60 * 48  # 2 DAYS
 
 
 class FreeGames(commands.Cog):
@@ -19,7 +23,7 @@ class FreeGames(commands.Cog):
         self.session: aiohttp.ClientSession | None = None
 
     # ===============================
-    # COG LOAD / UNLOAD (SAFE)
+    # COG LOAD / UNLOAD
     # ===============================
 
     async def cog_load(self):
@@ -79,12 +83,31 @@ class FreeGames(commands.Cog):
 
         await ctx.send("✅ Free games updates disabled.")
 
+    # 🔥 FORCE COMMAND
+    @commands.command(name="forcefreegames")
+    @commands.has_guild_permissions(administrator=True)
+    async def force_free_games(self, ctx):
+        await ctx.send("🔄 Forcing free games check...")
+        await self.run_free_games()
+        await ctx.send("✅ Free games check completed.")
+
     # ===============================
     # BACKGROUND TASK
     # ===============================
 
     @tasks.loop(hours=12)
     async def check_free_games(self):
+        await self.run_free_games()
+
+    @check_free_games.before_loop
+    async def before_free_games(self):
+        await self.bot.wait_until_ready()
+
+    # ===============================
+    # CORE LOGIC (REUSED)
+    # ===============================
+
+    async def run_free_games(self):
         if not self.session or self.session.closed:
             self.session = aiohttp.ClientSession()
 
@@ -95,6 +118,8 @@ class FreeGames(commands.Cog):
         epic_games = await self.fetch_epic_games()
         steam_games = await self.fetch_steam_games()
         all_games = epic_games + steam_games
+
+        now = time.time()
 
         for config in configs:
             guild = self.bot.get_guild(config["guild_id"])
@@ -113,8 +138,16 @@ class FreeGames(commands.Cog):
 
             posted = config.get("last_posted", [])
 
+            # 🧹 CLEAN OLD ENTRIES (2 DAYS)
+            posted = [
+                p for p in posted
+                if isinstance(p, dict) and now - p["ts"] < CLEANUP_AFTER_SECONDS
+            ]
+
+            posted_ids = {p["id"] for p in posted}
+
             for game in all_games:
-                if game["id"] in posted:
+                if game["id"] in posted_ids:
                     continue
 
                 embed = discord.Embed(
@@ -144,18 +177,15 @@ class FreeGames(commands.Cog):
                 except discord.Forbidden:
                     continue
 
-                posted.append(game["id"])
-
-            posted = posted[-100:]
+                posted.append({
+                    "id": game["id"],
+                    "ts": now
+                })
 
             self.collection.update_one(
                 {"guild_id": guild.id},
                 {"$set": {"last_posted": posted}}
             )
-
-    @check_free_games.before_loop
-    async def before_free_games(self):
-        await self.bot.wait_until_ready()
 
     # ===============================
     # DATA FETCHERS

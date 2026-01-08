@@ -11,27 +11,24 @@ class FreeGames(commands.Cog):
         self.bot = bot
         self.collection = freegames_col
 
-        # 🔒 SAFE INDEX CREATION
         try:
             self.collection.create_index("guild_id", unique=True)
         except Exception as e:
             print("Index error:", e)
 
-        self.session = None  # ⚠️ DO NOT create ClientSession here
+        self.session: aiohttp.ClientSession | None = None
 
     # ===============================
-    # COG LOAD / UNLOAD
+    # COG LOAD / UNLOAD (SAFE)
     # ===============================
 
     async def cog_load(self):
-        await self.bot.wait_until_ready()
-        self.session = aiohttp.ClientSession()
         self.check_free_games.start()
         print("✅ FreeGames cog loaded")
 
     async def cog_unload(self):
         self.check_free_games.cancel()
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
         print("❌ FreeGames cog unloaded")
 
@@ -53,7 +50,6 @@ class FreeGames(commands.Cog):
             if not role:
                 return await ctx.send("❌ Invalid role ID.")
 
-        # 🔒 ONE CONFIG PER SERVER
         if self.collection.find_one({"guild_id": ctx.guild.id}):
             return await ctx.send(
                 "❌ Free games already enabled.\nUse `!removefg` first."
@@ -89,6 +85,9 @@ class FreeGames(commands.Cog):
 
     @tasks.loop(hours=12)
     async def check_free_games(self):
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession()
+
         configs = list(self.collection.find({"enabled": True}))
         if not configs:
             return
@@ -153,6 +152,10 @@ class FreeGames(commands.Cog):
                 {"guild_id": guild.id},
                 {"$set": {"last_posted": posted}}
             )
+
+    @check_free_games.before_loop
+    async def before_free_games(self):
+        await self.bot.wait_until_ready()
 
     # ===============================
     # DATA FETCHERS

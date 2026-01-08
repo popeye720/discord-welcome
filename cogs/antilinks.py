@@ -16,12 +16,13 @@ class AntiLinks(commands.Cog):
     # PERMISSION CHECK
     # -------------------------------
     def is_admin_or_owner(self, member: discord.Member):
-        if member.id == member.guild.owner_id:
-            return True
-        return member.guild_permissions.administrator
+        return (
+            member.id == member.guild.owner_id
+            or member.guild_permissions.administrator
+        )
 
     # -------------------------------
-    # ENABLE ANTILINKS
+    # ENABLE / ADD ROLE
     # -------------------------------
     @commands.command(name="antilinks")
     @commands.guild_only()
@@ -29,32 +30,45 @@ class AntiLinks(commands.Cog):
         if not self.is_admin_or_owner(ctx.author):
             return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
 
-        allowed_roles = []
-        if role:
-            allowed_roles.append(role.id)
+        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
 
-        antilinks_col.update_one(
-            {"guild_id": ctx.guild.id},
-            {
-                "$set": {
-                    "guild_id": ctx.guild.id,
-                    "enabled": True,
-                    "allowed_roles": allowed_roles
-                }
-            },
-            upsert=True
-        )
+        # 🟢 FIRST TIME ENABLE
+        if not data:
+            antilinks_col.insert_one({
+                "guild_id": ctx.guild.id,
+                "enabled": True,
+                "allowed_roles": [role.id] if role else []
+            })
 
-        if role:
-            await ctx.reply(
-                f"✅ **Anti-Links Enabled**\n\n"
-                f"🔓 Allowed Role: {role.mention}\n"
-                f"👑 Admins & Owner always allowed"
+            if role:
+                return await ctx.reply(
+                    f"✅ **Anti-Links Enabled**\n"
+                    f"🔓 Allowed Role: {role.mention}"
+                )
+            return await ctx.reply(
+                "✅ **Anti-Links Enabled**\n"
+                "🔒 Only **Admins & Owner** can send links"
             )
-        else:
-            await ctx.reply(
-                f"✅ **Anti-Links Enabled**\n\n"
-                f"🔒 Only **Admins & Owner** can send links"
+
+        # 🔁 ALREADY ENABLED
+        if data.get("enabled"):
+            if not role:
+                return await ctx.reply("⚠️ **Anti-Links is already ENABLED**.")
+
+            allowed_roles = data.get("allowed_roles", [])
+
+            if role.id in allowed_roles:
+                return await ctx.reply(
+                    f"⚠️ {role.mention} is **already allowed**."
+                )
+
+            antilinks_col.update_one(
+                {"guild_id": ctx.guild.id},
+                {"$push": {"allowed_roles": role.id}}
+            )
+
+            return await ctx.reply(
+                f"✅ Role Added: {role.mention} can now send links."
             )
 
     # -------------------------------
@@ -66,9 +80,55 @@ class AntiLinks(commands.Cog):
         if not self.is_admin_or_owner(ctx.author):
             return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
 
-        antilinks_col.delete_one({"guild_id": ctx.guild.id})
+        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
 
-        await ctx.reply("🟢 **Anti-Links Disabled**\nAll restrictions removed.")
+        if not data:
+            return await ctx.reply("⚠️ **Anti-Links is already DISABLED**.")
+
+        antilinks_col.delete_one({"guild_id": ctx.guild.id})
+        await ctx.reply("🟢 **Anti-Links Disabled Successfully**.")
+
+    # -------------------------------
+    # STATUS COMMAND
+    # -------------------------------
+    @commands.command(name="statusantilinks")
+    @commands.guild_only()
+    async def statusantilinks(self, ctx):
+        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
+
+        if not data:
+            return await ctx.reply("🔴 **Anti-Links Status:** OFF")
+
+        role_mentions = []
+        for rid in data.get("allowed_roles", []):
+            role = ctx.guild.get_role(rid)
+            if role:
+                role_mentions.append(role.mention)
+
+        embed = discord.Embed(
+            title="🔗 Anti-Links Status",
+            color=discord.Color.green()
+        )
+
+        embed.add_field(
+            name="Status",
+            value="🟢 ENABLED",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Allowed Users",
+            value="👑 Admins & Server Owner",
+            inline=False
+        )
+
+        embed.add_field(
+            name="Allowed Roles",
+            value=", ".join(role_mentions) if role_mentions else "None",
+            inline=False
+        )
+
+        await ctx.reply(embed=embed)
 
     # -------------------------------
     # MESSAGE LISTENER
@@ -83,44 +143,38 @@ class AntiLinks(commands.Cog):
             {"allowed_roles": 1}
         )
 
-        if not data:
+        if not data or not LINK_REGEX.search(message.content):
             return
 
-        if not LINK_REGEX.search(message.content):
-            return
-
-        # 👑 Owner allowed
+        # 👑 OWNER
         if message.author.id == message.guild.owner_id:
             return
 
-        # 🛡 Admin allowed
+        # 🛡 ADMIN
         if message.author.guild_permissions.administrator:
             return
 
-        # 🎭 Role exception
+        # 🎭 ROLE EXCEPTION
         allowed_roles = data.get("allowed_roles", [])
         if allowed_roles:
-            user_role_ids = [role.id for role in message.author.roles]
-            if any(rid in user_role_ids for rid in allowed_roles):
+            if any(r.id in allowed_roles for r in message.author.roles):
                 return
 
-        # ❌ DELETE MESSAGE
+        # ❌ DELETE
         try:
             await message.delete()
         except discord.Forbidden:
             return
 
-        # 📩 DM USER
+        # 📩 DM
         try:
-            embed = discord.Embed(
-                title="🚫 Links Not Allowed",
-                description=(
-                    f"Hey **{message.author.name}** 👋\n\n"
-                    f"Links are **not allowed** in this server."
-                ),
-                color=discord.Color.red()
+            await message.author.send(
+                embed=discord.Embed(
+                    title="🚫 Links Not Allowed",
+                    description="You are not allowed to send links in this server.",
+                    color=discord.Color.red()
+                )
             )
-            await message.author.send(embed=embed)
         except discord.Forbidden:
             pass
 

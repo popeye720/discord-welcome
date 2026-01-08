@@ -38,11 +38,14 @@ class AutoTriggers(commands.Cog):
                 mention_author=False
             )
 
-    # -------- ADD TRIGGER (OWNER ONLY) --------
+    # -------- ADD TRIGGER (OWNER / ADMIN ONLY) --------
     @commands.command(name="addtrigger")
     async def add_trigger(self, ctx, trigger: str, *, reply: str):
-        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            return await ctx.reply("You are not allowed to use this command.")
+        if not ctx.guild or not (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
 
         trigger = trigger.lower()
 
@@ -61,13 +64,16 @@ class AutoTriggers(commands.Cog):
             "reply": reply
         })
 
-        await ctx.reply(f"Trigger `{trigger}` added and saved permanently.")
+        await ctx.reply(f"✅ Trigger `{trigger}` added and saved permanently.")
 
-    # -------- DELETE TRIGGER (OWNER ONLY) --------
+    # -------- DELETE TRIGGER (OWNER / ADMIN ONLY) --------
     @commands.command(name="deltrigger")
     async def delete_trigger(self, ctx, trigger: str):
-        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            return await ctx.reply("You are not allowed to use this command.")
+        if not ctx.guild or not (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
 
         trigger = trigger.lower()
 
@@ -79,13 +85,16 @@ class AutoTriggers(commands.Cog):
         if not result:
             return await ctx.reply(f"Trigger `{trigger}` does not exist.")
 
-        await ctx.reply(f"Trigger `{trigger}` deleted successfully.")
+        await ctx.reply(f"✅ Trigger `{trigger}` deleted successfully.")
 
-    # -------- LIST TRIGGERS (OWNER ONLY) --------
+    # -------- LIST TRIGGERS (OWNER / ADMIN ONLY) --------
     @commands.command(name="triggerlist")
     async def trigger_list(self, ctx):
-        if not ctx.guild or ctx.author.id != ctx.guild.owner_id:
-            return await ctx.reply("You are not allowed to use this command.")
+        if not ctx.guild or not (
+            ctx.author.id == ctx.guild.owner_id
+            or ctx.author.guild_permissions.administrator
+        ):
+            return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
 
         triggers = autotrigger_col.find(
             {"guild_id": ctx.guild.id},

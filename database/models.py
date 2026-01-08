@@ -41,3 +41,8 @@ form_responses_col.create_index(
 
 antilinks_col = db["anti_links"]
 antilinks_col.create_index("guild_id", unique=True)
+
+
+
+antispam_col = db["anti_spam"]
+antispam_col.create_index("guild_id", unique=True)

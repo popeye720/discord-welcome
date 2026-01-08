@@ -1,7 +1,9 @@
 import discord
 from discord.ext import commands
+import re
 from database.models import reactionrole_col
 
+ROLE_MENTION_REGEX = re.compile(r"<@&(\d+)>")
 
 class ReactionRoleManager(commands.Cog):
     def __init__(self, bot):
@@ -18,7 +20,7 @@ class ReactionRoleManager(commands.Cog):
         if not self.is_owner(ctx):
             return await ctx.send("❌ Only the **Server Owner** can use this command.")
 
-        # duplicate title block
+        # block duplicate title
         if reactionrole_col.find_one({"guild_id": ctx.guild.id, "title": title}):
             return await ctx.send("❌ Reaction role with this title already exists.")
 
@@ -27,32 +29,50 @@ class ReactionRoleManager(commands.Cog):
             return await ctx.send("❌ Invalid channel ID.")
 
         role_map = {}
-        description = []
+        description_lines = []
 
         for line in body.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+
+            # split emoji (last part)
             try:
                 text, emoji = line.rsplit(" ", 1)
             except ValueError:
-                return await ctx.send("❌ Each line must end with an emoji.")
+                return await ctx.send(
+                    "❌ Each line must end with an emoji."
+                )
 
-            role_name = text.split("-")[0].strip()
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
+            # extract role mention
+            match = ROLE_MENTION_REGEX.search(text)
+            if not match:
+                return await ctx.send(
+                    f"❌ Invalid role mention format:\n`{line}`"
+                )
 
+            role_id = int(match.group(1))
+            role = ctx.guild.get_role(role_id)
             if not role:
-                return await ctx.send(f"❌ Role not found: `{role_name}`")
+                return await ctx.send(
+                    f"❌ Role not found for ID `{role_id}`"
+                )
 
             role_map[str(emoji)] = role.id
-            description.append(f"{emoji} {text}")
+            description_lines.append(f"{emoji} {text}")
+
+        if not role_map:
+            return await ctx.send("❌ No valid roles found.")
 
         embed = discord.Embed(
             title=title,
-            description="\n".join(description),
+            description="\n".join(description_lines),
             color=discord.Color.blue()
         )
 
         message = await channel.send(embed=embed)
 
-        for emoji in role_map.keys():
+        for emoji in role_map:
             try:
                 await message.add_reaction(emoji)
             except:
@@ -114,8 +134,7 @@ class ReactionRoleManager(commands.Cog):
         if not member:
             return
 
-        emoji_key = str(payload.emoji)
-        role_id = data["roles"].get(emoji_key)
+        role_id = data["roles"].get(str(payload.emoji))
         if not role_id:
             return
 
@@ -141,8 +160,7 @@ class ReactionRoleManager(commands.Cog):
         if not member:
             return
 
-        emoji_key = str(payload.emoji)
-        role_id = data["roles"].get(emoji_key)
+        role_id = data["roles"].get(str(payload.emoji))
         if not role_id:
             return
 

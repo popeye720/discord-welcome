@@ -3,7 +3,7 @@ import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
-from models import antilinks_col
+from database.models import antilinks_col
 
 LINK_REGEX = re.compile(r"(https?:\/\/|www\.)\S+", re.IGNORECASE)
 

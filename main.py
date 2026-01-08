@@ -21,20 +21,17 @@ if not TOKEN:
 async def on_ready():
     print(f"✅ Bot logged in as {bot.user}")
 
-    # 🔥 ADD THIS LINE (IMPORTANT)
-    await bot.tree.sync()
-    print("✅ Slash commands synced")
-
+    # 🔥 REGISTER PERSISTENT VIEWS (MOST IMPORTANT)
     from cogs.ticket import TicketButton, CloseTicketView
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
 
+    # 🔥 REGISTER GUILD MANAGER PERSISTENT VIEW
     from cogs.guild_manager import GuildActionView
-    bot.add_view(GuildActionView(bot, guild_id=0))
+    bot.add_view(GuildActionView(bot, guild_id=0))  # 👈 REQUIRED for restart support
 
     from cogs.forms import UserFormView
     bot.add_view(UserFormView(guild_id=0))
-
 
 @bot.event
 async def on_guild_join(guild):
@@ -67,11 +64,6 @@ async def main():
         await bot.load_extension("cogs.ping")
         await bot.load_extension("cogs.forms")
         await bot.load_extension("cogs.scheduled_embeds")
-
-
-
-
-
 
         await bot.start(TOKEN)
 

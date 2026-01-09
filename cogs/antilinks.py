@@ -143,7 +143,20 @@ class AntiLinks(commands.Cog):
             {"allowed_roles": 1}
         )
 
-        if not data or not LINK_REGEX.search(message.content):
+        if not data:
+            return
+
+        # -------------------------------
+        # ALLOW !audiodown COMMAND
+        # -------------------------------
+        if message.content.startswith("!audiodown "):
+            # Always allow for anyone (admin, owner, normal user)
+            return
+
+        # -------------------------------
+        # CHECK FOR LINKS
+        # -------------------------------
+        if not LINK_REGEX.search(message.content):
             return
 
         # 👑 OWNER
@@ -160,23 +173,24 @@ class AntiLinks(commands.Cog):
             if any(r.id in allowed_roles for r in message.author.roles):
                 return
 
-        # ❌ DELETE
-        try:
-            await message.delete()
-        except discord.Forbidden:
-            return
+        # ❌ DELETE if message is ONLY a link
+        if message.content.strip() == LINK_REGEX.search(message.content).group(0):
+            try:
+                await message.delete()
+            except discord.Forbidden:
+                return
 
-        # 📩 DM
-        try:
-            await message.author.send(
-                embed=discord.Embed(
-                    title="🚫 Links Not Allowed",
-                    description="You are not allowed to send links in this server.",
-                    color=discord.Color.red()
+            # 📩 DM
+            try:
+                await message.author.send(
+                    embed=discord.Embed(
+                        title="🚫 Links Not Allowed",
+                        description="You are not allowed to send links in this server.",
+                        color=discord.Color.red()
+                    )
                 )
-            )
-        except discord.Forbidden:
-            pass
+            except discord.Forbidden:
+                pass
 
 
 async def setup(bot):

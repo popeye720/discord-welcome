@@ -7,32 +7,36 @@ import os
 from database.models import audiodown_col  
 
 class AudioDownloader(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.download_lock = asyncio.Lock()
 
-    # -------- ADMIN CHECK --------
-    def is_admin():
-        async def predicate(interaction: discord.Interaction):
-            guild = interaction.guild
-            if guild is None:
-                return False
-            return interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id
-        return app_commands.check(predicate)
+    # ---------------- ADMIN CHECK ----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
-    # -------- SETUP --------
+    # ---------------- SETUP AUDIO DOWNLOADER ----------------
     @app_commands.command(name="audiodownsetup", description="Setup the audio downloader channel")
-    @is_admin()
     async def audiodownsetup(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message("❌ Only admins or owner can use this.", ephemeral=True)
+
         guild = interaction.guild
         data = audiodown_col.find_one({"guild_id": guild.id})
 
         if data and data.get("enabled"):
-            return await interaction.response.send_message("⚠️ Audio downloader already set up.", ephemeral=True)
+            return await interaction.response.send_message("⚠️ Already set up.", ephemeral=True)
 
         embed = Embed(
             title="🎵 YouTube Audio Downloader",
-            description=f"Use `/audiodown <YouTube URL>` to download audio in this channel.",
+            description=f"Use `/audiodown <YouTube URL>` in this channel.",
             color=discord.Color.green()
         )
         msg = await channel.send(embed=embed)
@@ -45,10 +49,12 @@ class AudioDownloader(commands.Cog):
 
         await interaction.response.send_message(f"✅ Setup complete in {channel.mention}", ephemeral=True)
 
-    # -------- DISABLE --------
+    # ---------------- DISABLE AUDIO DOWNLOADER ----------------
     @app_commands.command(name="disableaudiodown", description="Disable audio downloader")
-    @is_admin()
     async def disableaudiodown(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message("❌ Only admins or owner can use this.", ephemeral=True)
+
         guild = interaction.guild
         data = audiodown_col.find_one({"guild_id": guild.id})
         if not data or not data.get("enabled"):
@@ -64,9 +70,9 @@ class AudioDownloader(commands.Cog):
         audiodown_col.update_one({"guild_id": guild.id}, {"$set": {"enabled": False}})
         await interaction.response.send_message("❌ Audio downloader disabled.", ephemeral=True)
 
-    # -------- DOWNLOAD AUDIO --------
+    # ---------------- DOWNLOAD AUDIO ----------------
     @app_commands.command(name="audiodown", description="Download audio from YouTube")
-    @app_commands.default_permissions(send_messages=True)
+    @app_commands.default_permissions(send_messages=True)  # everyone can use
     async def audiodown(self, interaction: discord.Interaction, url: str):
         guild = interaction.guild
         author = interaction.user
@@ -77,8 +83,9 @@ class AudioDownloader(commands.Cog):
 
         if interaction.channel.id != data["channel_id"]:
             if not (author.guild_permissions.administrator or author.id == guild.owner_id):
-                warning = await interaction.followup.send(f"⚠️ Use <#{data['channel_id']}>", ephemeral=True)
-                return
+                return await interaction.response.send_message(
+                    f"⚠️ Use this command only in <#{data['channel_id']}>", ephemeral=True
+                )
 
         if self.download_lock.locked():
             return await interaction.response.send_message("⏳ Another download in progress.", ephemeral=True)
@@ -98,7 +105,7 @@ class AudioDownloader(commands.Cog):
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                     filesize = info.get("filesize") or info.get("filesize_approx") or 0
-                    if filesize > 7*1024*1024:
+                    if filesize > 7 * 1024 * 1024:
                         return await interaction.edit_original_response(content="❌ File exceeds 7MB.")
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -113,5 +120,6 @@ class AudioDownloader(commands.Cog):
             except Exception as e:
                 await interaction.edit_original_response(content=f"❌ Failed: {str(e)}")
 
+# ---------------- COG SETUP ----------------
 async def setup(bot: commands.Bot):
     await bot.add_cog(AudioDownloader(bot))

@@ -1,187 +1,125 @@
 import discord
 from discord.ext import commands
-from discord import Embed
+from discord import app_commands, Embed
 import yt_dlp
 import asyncio
-import contextlib
 import os
-
-from database.models import audiodown_col
-
-MAX_SIZE = 7 * 1024 * 1024  # 7 MB
-
+from database.models import audiodown_col  
 
 class AudioDownloader(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.download_locks = {}
+        self.download_lock = asyncio.Lock()
 
-    async def get_guild_lock(self, guild_id: str):
-        if guild_id not in self.download_locks:
-            self.download_locks[guild_id] = asyncio.Lock()
-        return self.download_locks[guild_id]
+    # ---------------- ADMIN CHECK ----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if guild is None:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
-    # -------- PERMISSION CHECK (ADMIN / OWNER) --------
-    @staticmethod
-    def is_admin():
-        async def predicate(ctx):
-            return (
-                ctx.author.guild_permissions.administrator
-                or ctx.author.id == ctx.guild.owner_id
-            )
-        return commands.check(predicate)
+    # ---------------- SETUP AUDIO DOWNLOADER ----------------
+    @app_commands.command(name="audiodownsetup", description="Setup the audio downloader channel")
+    async def audiodownsetup(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message("❌ Only admins or owner can use this.", ephemeral=True)
 
-    # -------- SETUP COMMAND --------
-    @commands.command(name="audiodownsetup")
-    @is_admin()
-    async def audiodownsetup(self, ctx, channel: discord.TextChannel):
-        guild_id = ctx.guild.id
-        existing = audiodown_col.find_one({"guild_id": guild_id})
-        if existing:
-            return await ctx.reply("⚠️ Audio downloader already set up.")
+        guild = interaction.guild
+        data = audiodown_col.find_one({"guild_id": guild.id})
+
+        if data and data.get("enabled"):
+            return await interaction.response.send_message("⚠️ Already set up.", ephemeral=True)
 
         embed = Embed(
             title="🎵 YouTube Audio Downloader",
-            description="Use `!audiodown <YouTube URL>` in this channel.",
+            description=f"Use `/audiodown <YouTube URL>` in this channel.",
             color=discord.Color.green()
         )
         msg = await channel.send(embed=embed)
 
-        audiodown_col.insert_one({
-            "guild_id": guild_id,
-            "channel_id": channel.id,
-            "setup_msg_id": msg.id,
-            "enabled": True
-        })
+        audiodown_col.update_one(
+            {"guild_id": guild.id},
+            {"$set": {"channel_id": channel.id, "setup_msg_id": msg.id, "enabled": True}},
+            upsert=True
+        )
 
-        await ctx.reply(f"✅ Setup complete in {channel.mention}")
+        await interaction.response.send_message(f"✅ Setup complete in {channel.mention}", ephemeral=True)
 
-    # -------- DOWNLOAD COMMAND --------
-    @commands.command(name="audiodown")
-    async def audiodown(self, ctx, url: str):
-        guild_id = ctx.guild.id
-        data = audiodown_col.find_one({"guild_id": guild_id})
+    # ---------------- DISABLE AUDIO DOWNLOADER ----------------
+    @app_commands.command(name="disableaudiodown", description="Disable audio downloader")
+    async def disableaudiodown(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message("❌ Only admins or owner can use this.", ephemeral=True)
+
+        guild = interaction.guild
+        data = audiodown_col.find_one({"guild_id": guild.id})
         if not data or not data.get("enabled"):
-            return await ctx.reply("⚠️ Audio downloader is not set up.")
+            return await interaction.response.send_message("⚠️ Not enabled.", ephemeral=True)
 
-        if ctx.channel.id != data["channel_id"]:
-            if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
-                warn = await ctx.channel.send(f"⚠️ Use <#{data['channel_id']}>")
-                await asyncio.sleep(2)
-                await ctx.message.delete()
-                await warn.delete()
-                return
+        channel = guild.get_channel(data["channel_id"])
+        try:
+            msg = await channel.fetch_message(data["setup_msg_id"])
+            await msg.delete()
+        except:
+            pass
 
-        lock = await self.get_guild_lock(guild_id)
-        if lock.locked():
-            return await ctx.reply("⏳ Another download is already in progress.")
+        audiodown_col.update_one({"guild_id": guild.id}, {"$set": {"enabled": False}})
+        await interaction.response.send_message("❌ Audio downloader disabled.", ephemeral=True)
 
-        async with lock:
-            status = await ctx.reply(
-                f"🔍 **Checking audio size for {ctx.author.mention}**\n"
-                f"⏳ Please wait… do not delete this message"
-            )
+    # ---------------- DOWNLOAD AUDIO ----------------
+    @app_commands.command(name="audiodown", description="Download audio from YouTube")
+    @app_commands.default_permissions(send_messages=True)  # everyone can use
+    async def audiodown(self, interaction: discord.Interaction, url: str):
+        guild = interaction.guild
+        author = interaction.user
+        data = audiodown_col.find_one({"guild_id": guild.id})
 
-            info_opts = {
-                "format": "bestaudio",
-                "quiet": True,
+        if not data or not data.get("enabled"):
+            return await interaction.response.send_message("⚠️ Not set up.", ephemeral=True)
+
+        if interaction.channel.id != data["channel_id"]:
+            if not (author.guild_permissions.administrator or author.id == guild.owner_id):
+                return await interaction.response.send_message(
+                    f"⚠️ Use this command only in <#{data['channel_id']}>", ephemeral=True
+                )
+
+        if self.download_lock.locked():
+            return await interaction.response.send_message("⏳ Another download in progress.", ephemeral=True)
+
+        async with self.download_lock:
+            await interaction.response.send_message(f"⬇️ Downloading {url} ...", ephemeral=True)
+            temp_file = f"temp_{guild.id}_{author.id}.webm"
+
+            ydl_opts = {
+                "format": "bestaudio[ext=webm]/bestaudio",
+                "outtmpl": temp_file,
                 "noplaylist": True,
-                "no_warnings": True,
-                "logger": None
+                "quiet": True
             }
 
             try:
-                downloaded_file = None
-                with open(os.devnull, "w") as fnull:
-                    with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
-                        with yt_dlp.YoutubeDL(info_opts) as ydl:
-                            info = ydl.extract_info(url, download=False)
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    filesize = info.get("filesize") or info.get("filesize_approx") or 0
+                    if filesize > 7 * 1024 * 1024:
+                        return await interaction.edit_original_response(content="❌ File exceeds 7MB.")
 
-                filesize = (
-                    info.get("filesize")
-                    or info.get("filesize_approx")
-                    or info.get("filesize_estimate")
-                )
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
 
-                if info.get("is_live"):
-                    return await status.edit(
-                        content=f"⚠️ {ctx.author.mention}, live streams cannot be downloaded."
-                    )
+                if os.path.exists(temp_file):
+                    await interaction.channel.send(file=discord.File(temp_file))
+                    os.remove(temp_file)
 
-                if filesize and filesize > MAX_SIZE:
-                    return await status.edit(
-                        content=(f"❌ **File too large**\n"
-                                 f"Estimated size: `{filesize / 1024 / 1024:.2f} MB`\n"
-                                 f"Discord limit is **7 MB**")
-                    )
-
-                await status.edit(
-                    content=f"⬇️ **Downloading audio for {ctx.author.mention}**\n⏳ Please wait…"
-                )
-
-                ydl_opts = {
-                    "format": "bestaudio[ext=webm]/bestaudio",
-                    "outtmpl": "%(title)s.%(ext)s",
-                    "quiet": True,
-                    "noplaylist": True,
-                    "restrictfilenames": True,
-                    "no_warnings": True,
-                    "logger": None
-                }
-
-                with open(os.devnull, "w") as fnull:
-                    with contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
-                        try:
-                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                                info = ydl.extract_info(url, download=True)
-                                downloaded_file = ydl.prepare_filename(info)
-                        except yt_dlp.utils.DownloadError as de:
-                            if "Requested format is not available" in str(de):
-                                return await status.edit(
-                                    content=f"⚠️ {ctx.author.mention}, live streams cannot be downloaded."
-                                )
-                            else:
-                                raise de
-
-                if not downloaded_file or not os.path.exists(downloaded_file):
-                    return await status.edit(content="❌ Download failed.")
-
-                file_size = os.path.getsize(downloaded_file)
-                if file_size > MAX_SIZE:
-                    os.remove(downloaded_file)
-                    return await status.edit(
-                        content="❌ File exceeded **7 MB** after download."
-                    )
-
-                await status.edit(content="📤 Uploading audio to Discord…")
-
-                await ctx.channel.send(
-                    content=f"✅ **Done!** {ctx.author.mention}, your audio is ready 👇",
-                    file=discord.File(downloaded_file)
-                )
-
-                os.remove(downloaded_file)
-
-                await status.edit(
-                    content=f"✅ **Completed successfully** for {ctx.author.mention}"
-                )
+                await interaction.delete_original_response()
 
             except Exception as e:
-                await status.edit(content=f"❌ Failed: `{e}`")
+                await interaction.edit_original_response(content=f"❌ Failed: {str(e)}")
 
-    # -------- DISABLE COMMAND --------
-    @commands.command(name="audiodowndisable")
-    @is_admin()
-    async def audiodowndisable(self, ctx):
-        guild_id = ctx.guild.id
-        data = audiodown_col.find_one({"guild_id": guild_id})
-        if not data or not data.get("enabled"):
-            return await ctx.reply("⚠️ Audio downloader is not set up.")
-
-        audiodown_col.find_one_and_delete({"guild_id": guild_id})
-        await ctx.reply(f"✅ Audio downloader disabled for **{ctx.guild.name}**.")
-
-
-# -------- SETUP COG FOR EXTENSION LOADING --------
-async def setup(bot):
+# ---------------- COG SETUP ----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(AudioDownloader(bot))

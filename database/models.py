@@ -52,6 +52,3 @@ antispam_col.create_index("guild_id", unique=True)
 streammode_col = db["stream_mode"]
 streammode_col.create_index("guild_id", unique=True)
 
-
-audiodown_col = db["audio_downloads"]
-audiodown_col.create_index("guild_id", unique=True)

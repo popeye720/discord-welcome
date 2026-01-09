@@ -16,7 +16,7 @@ class AudioDownloader(commands.Cog):
         self.bot = bot
         self.download_locks: dict[int, asyncio.Lock] = {}
 
-    # ---------- PER GUILD LOCK ----------
+    # ---------- PER GUILD LOCK (SAME AS bot.py) ----------
     async def get_guild_lock(self, guild_id: int):
         if guild_id not in self.download_locks:
             self.download_locks[guild_id] = asyncio.Lock()
@@ -87,7 +87,7 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # Channel restriction
+        # Channel restriction (SAME LOGIC)
         if interaction.channel.id != data["channel_id"]:
             if not await self.is_admin(interaction):
                 warn = await interaction.channel.send(
@@ -107,13 +107,10 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # STATUS MESSAGE
+        # INITIAL STATUS MESSAGE
         await interaction.response.send_message(
-            embed=Embed(
-                title="🔍 Checking audio",
-                description=f"Checking audio size for {author.mention}\n⏳ Please wait…",
-                color=discord.Color.blurple()
-            )
+            f"🔍 **Checking audio size for {author.mention}**\n"
+            f"⏳ Please wait… do not delete this message"
         )
         status_msg = await interaction.original_response()
 
@@ -137,11 +134,7 @@ class AudioDownloader(commands.Cog):
 
                 if info.get("is_live"):
                     return await status_msg.edit(
-                        embed=Embed(
-                            title="⚠️ Not Supported",
-                            description="Live streams cannot be downloaded.",
-                            color=discord.Color.orange()
-                        )
+                        content=f"⚠️ {author.mention}, live streams cannot be downloaded."
                     )
 
                 filesize = (
@@ -152,23 +145,16 @@ class AudioDownloader(commands.Cog):
 
                 if filesize and filesize > MAX_SIZE:
                     return await status_msg.edit(
-                        embed=Embed(
-                            title="❌ File Too Large",
-                            description=(
-                                f"Estimated size: `{filesize / 1024 / 1024:.2f} MB`\n"
-                                "Discord limit is **7 MB**"
-                            ),
-                            color=discord.Color.red()
+                        content=(
+                            "❌ **File too large**\n"
+                            f"Estimated size: `{filesize / 1024 / 1024:.2f} MB`\n"
+                            "Discord limit is **7 MB**"
                         )
                     )
 
                 # ---------- DOWNLOADING ----------
                 await status_msg.edit(
-                    embed=Embed(
-                        title="⬇️ Downloading",
-                        description=f"Downloading audio for {author.mention}",
-                        color=discord.Color.blurple()
-                    )
+                    content=f"⬇️ **Downloading audio for {author.mention}**\n⏳ Please wait…"
                 )
 
                 ydl_opts = {
@@ -188,51 +174,33 @@ class AudioDownloader(commands.Cog):
                             downloaded_file = ydl.prepare_filename(info)
 
                 if not downloaded_file or not os.path.exists(downloaded_file):
-                    return await status_msg.edit(
-                        embed=Embed(
-                            title="❌ Failed",
-                            description="Download failed.",
-                            color=discord.Color.red()
-                        )
-                    )
+                    return await status_msg.edit(content="❌ Download failed.")
 
                 # ---------- FINAL SIZE CHECK ----------
                 if os.path.getsize(downloaded_file) > MAX_SIZE:
                     os.remove(downloaded_file)
                     return await status_msg.edit(
-                        embed=Embed(
-                            title="❌ File Too Large",
-                            description="File exceeded **7 MB** after download.",
-                            color=discord.Color.red()
-                        )
+                        content="❌ File exceeded **7 MB** after download."
                     )
 
-                # ---------- FINAL SEND (SINGLE MESSAGE) ----------
-                final_embed = Embed(
-                    title="✅ Download Completed",
-                    description=f"{author.mention}, your audio is ready 👇",
-                    color=discord.Color.green()
-                )
-
-                await status_msg.delete()
+                # ---------- UPLOAD ----------
+                await status_msg.edit(content="📤 Uploading audio to Discord…")
 
                 await interaction.channel.send(
-                    embed=final_embed,
+                    content=f"✅ **Done!** {author.mention}, your audio is ready 👇",
                     file=discord.File(downloaded_file)
                 )
 
                 os.remove(downloaded_file)
 
+                await status_msg.edit(
+                    content=f"✅ **Completed successfully** for {author.mention}"
+                )
+
             except Exception as e:
                 if downloaded_file and os.path.exists(downloaded_file):
                     os.remove(downloaded_file)
-                await status_msg.edit(
-                    embed=Embed(
-                        title="❌ Error",
-                        description=str(e),
-                        color=discord.Color.red()
-                    )
-                )
+                await status_msg.edit(content=f"❌ Failed: `{e}`")
 
     # ---------- DISABLE ----------
     @app_commands.command(name="disableaudiodown", description="Disable audio downloader")

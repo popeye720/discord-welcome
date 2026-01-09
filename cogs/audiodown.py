@@ -79,7 +79,6 @@ class AudioDownloader(commands.Cog):
         if ctx.channel.id != data["channel_id"]:
             # Admin/Owner bypass
             if not (author.guild_permissions.administrator or author.id == guild.owner_id):
-                # Delete user command and send warning
                 warning = await ctx.channel.send(f"⚠️ Use this command only in <#{data['channel_id']}>")
                 await asyncio.sleep(2)
                 await ctx.message.delete()
@@ -93,31 +92,38 @@ class AudioDownloader(commands.Cog):
         async with self.download_lock:
             msg = await ctx.reply(f"⬇️ Downloading audio for {url} ...")
             temp_file = f"temp_{ctx.guild.id}_{ctx.author.id}.webm"
-            
+
+            # yt-dlp options (no FFmpeg, direct webm)
             ydl_opts = {
-    "format": "bestaudio[ext=webm]/bestaudio",
-    "outtmpl": temp_file,
-    "noplaylist": True,
-    "quiet": True,
-    "simulate": True
-}
+                "format": "bestaudio[ext=webm]/bestaudio",
+                "outtmpl": temp_file,
+                "noplaylist": True,
+                "quiet": True,
+                "simulate": True
+            }
+
             try:
-                # First fetch info to check size
+                # Fetch info first to check size
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                     filesize = info.get("filesize") or info.get("filesize_approx") or 0
                     if filesize > 7 * 1024 * 1024:  # >7MB
                         return await msg.edit(content="❌ Audio file exceeds 7 MB, cannot download.")
 
-                # Now download
+                # Download audio
                 ydl_opts["simulate"] = False
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
 
-                # Send file
+                # Final size check (in case info['filesize'] was None)
                 if os.path.exists(temp_file):
+                    if os.path.getsize(temp_file) > 7 * 1024 * 1024:
+                        await msg.edit(content="❌ Audio file exceeds 7 MB after download.")
+                        os.remove(temp_file)
+                        return
                     await ctx.channel.send(content=f"🎶 {author.mention}", file=discord.File(temp_file))
                     os.remove(temp_file)
+
                 await msg.delete()
 
             except Exception as e:
@@ -127,3 +133,5 @@ class AudioDownloader(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(AudioDownloader(bot))
+
+

@@ -4,7 +4,7 @@ from discord import app_commands, Embed
 import asyncio
 import time
 from ddgs import DDGS
-from database.models import search_col  # your MongoDB collection
+from database.models import search_col  # MongoDB collection
 
 NSFW_KEYWORDS = [
     "sex","porn","xxx","nude","boobs","vagina","penis",
@@ -132,9 +132,5 @@ class Search(commands.Cog):
 
 # ----------------- COG SETUP -----------------
 async def setup(bot: commands.Bot):
-    cog = Search(bot)
-    await bot.add_cog(cog)
-    # register slash commands globally
-    bot.tree.add_command(cog.setupsearch)
-    bot.tree.add_command(cog.disablesearch)
-    bot.tree.add_command(cog.search)
+    await bot.add_cog(Search(bot))
+    # ⚠️ No bot.tree.add_command() calls here

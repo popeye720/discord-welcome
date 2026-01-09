@@ -60,10 +60,10 @@ async def main():
         await bot.load_extension("cogs.moderation")
         await bot.load_extension("cogs.ytnotify")
         await bot.load_extension("cogs.profile")
-        #await bot.load_extension("cogs.audiodown")
         await bot.load_extension("cogs.fungames")
         await bot.load_extension("cogs.ping")
         await bot.load_extension("cogs.forms")
+        await bot.load_extension("cogs.audiodownloader")
         await bot.load_extension("cogs.scheduled_embeds")
         await bot.start(TOKEN)
 

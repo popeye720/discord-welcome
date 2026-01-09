@@ -93,20 +93,14 @@ class AudioDownloader(commands.Cog):
         async with self.download_lock:
             msg = await ctx.reply(f"⬇️ Downloading audio for {url} ...")
             temp_file = f"temp_{ctx.guild.id}_{ctx.author.id}.webm"
-
+            
             ydl_opts = {
-                "format": "bestaudio/best",
-                "outtmpl": temp_file,
-                "noplaylist": True,
-                "quiet": True,
-                "postprocessors": [{
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp4",
-                    "preferredquality": "192",
-                }],
-                "simulate": True,  # First check info
-            }
-
+    "format": "bestaudio[ext=webm]/bestaudio",
+    "outtmpl": temp_file,
+    "noplaylist": True,
+    "quiet": True,
+    "simulate": True
+}
             try:
                 # First fetch info to check size
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:

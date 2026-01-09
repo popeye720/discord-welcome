@@ -54,3 +54,6 @@ streammode_col.create_index("guild_id", unique=True)
 
 audiodown_col = db["audio_downloader"]
 audiodown_col.create_index("guild_id", unique=True)
+
+search_col = db["search_config"]
+search_col.create_index("guild_id", unique=True)

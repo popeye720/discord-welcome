@@ -65,6 +65,7 @@ async def main():
         await bot.load_extension("cogs.forms")
         await bot.load_extension("cogs.audiodownloader")
         await bot.load_extension("cogs.scheduled_embeds")
+        await bot.load_extension("cogs.search")
         await bot.start(TOKEN)
 
 

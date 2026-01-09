@@ -72,7 +72,11 @@ class Search(commands.Cog):
         await interaction.response.send_message("✅ Search disabled", ephemeral=True)
 
     # ----------------- SEARCH COMMAND -----------------
-    @app_commands.command(name="search", description="Search the web")
+    @app_commands.command(
+        name="search",
+        description="Search the web"
+    )
+    @app_commands.default_permissions(send_messages=True)  # allows everyone to use
     async def search(self, interaction: discord.Interaction, query: str):
         if any(word in query.lower() for word in NSFW_KEYWORDS):
             return await interaction.response.send_message(
@@ -132,4 +136,3 @@ class Search(commands.Cog):
 # ----------------- COG SETUP -----------------
 async def setup(bot: commands.Bot):
     await bot.add_cog(Search(bot))
-    # ⚠️ DO NOT sync here! Sync in main.py after bot is ready.

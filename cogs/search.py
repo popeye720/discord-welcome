@@ -4,7 +4,7 @@ from discord import app_commands, Embed
 import asyncio
 import time
 from ddgs import DDGS
-from database.models import search_col
+from database.models import search_col  # MongoDB collection
 
 NSFW_KEYWORDS = [
     "sex","porn","xxx","nude","boobs","vagina","penis",
@@ -19,11 +19,13 @@ class Search(commands.Cog):
         self.guild_locks = {}
         self.guild_cooldowns = {}
 
+    # ----------------- LOCK -----------------
     def get_guild_lock(self, gid: int):
         if gid not in self.guild_locks:
             self.guild_locks[gid] = asyncio.Lock()
         return self.guild_locks[gid]
 
+    # ----------------- PERMISSION CHECK -----------------
     async def is_admin_or_owner(self, interaction: discord.Interaction):
         guild: discord.Guild = interaction.guild
         if guild is None:
@@ -34,6 +36,7 @@ class Search(commands.Cog):
             return True
         return False
 
+    # ----------------- SETUP SEARCH -----------------
     @app_commands.command(name="setupsearch", description="Setup the search channel")
     async def setupsearch(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self.is_admin_or_owner(interaction):
@@ -51,6 +54,7 @@ class Search(commands.Cog):
             f"✅ Search enabled in {channel.mention}", ephemeral=True
         )
 
+    # ----------------- DISABLE SEARCH -----------------
     @app_commands.command(name="disablesearch", description="Disable the search system")
     async def disablesearch(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
@@ -67,6 +71,7 @@ class Search(commands.Cog):
 
         await interaction.response.send_message("✅ Search disabled", ephemeral=True)
 
+    # ----------------- SEARCH COMMAND -----------------
     @app_commands.command(name="search", description="Search the web")
     async def search(self, interaction: discord.Interaction, query: str):
         if any(word in query.lower() for word in NSFW_KEYWORDS):
@@ -87,6 +92,7 @@ class Search(commands.Cog):
                 f"⚠️ Use <#{search_channel_id}> for search.", ephemeral=True
             )
 
+        # cooldown
         now = time.time()
         last = self.guild_cooldowns.get(guild_id, 0)
         if now - last < SEARCH_COOLDOWN:
@@ -125,8 +131,5 @@ class Search(commands.Cog):
 
 # ----------------- COG SETUP -----------------
 async def setup(bot: commands.Bot):
-    cog = Search(bot)
-    await bot.add_cog(cog)
-    # ⚠️ NO bot.tree.add_command calls here
-    # ⚠️ Force a global sync to clean duplicates
-    await bot.tree.sync()
+    await bot.add_cog(Search(bot))
+    # ⚠️ DO NOT sync here! Sync in main.py after bot is ready.

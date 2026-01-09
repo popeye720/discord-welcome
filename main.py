@@ -60,6 +60,7 @@ async def main():
         await bot.load_extension("cogs.moderation")
         await bot.load_extension("cogs.ytnotify")
         await bot.load_extension("cogs.profile")
+        
         await bot.load_extension("cogs.fungames")
         await bot.load_extension("cogs.ping")
         await bot.load_extension("cogs.forms")

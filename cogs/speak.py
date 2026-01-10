@@ -9,7 +9,8 @@ from typing import Optional
 # ================= CONFIG =================
 
 DELETE_DELAY = 5
-FFMPEG_PATH = os.path.join(os.getcwd(), "ffmpeg.exe")
+FFMPEG_PATH = "ffmpeg"
+
 
 # ========================================
 

@@ -76,7 +76,8 @@ async def main():
         await bot.load_extension("cogs.forms")
         await bot.load_extension("cogs.audiodownloader")
         await bot.load_extension("cogs.scheduled_embeds")
-        await bot.load_extension("cogs.search")  # ✅ Slash commands handled in cog
+        await bot.load_extension("cogs.search")
+        await bot.load_extension("cogs.speak")
 
         # ================= RUN BOT =================
         await bot.start(TOKEN)

@@ -15,11 +15,10 @@ class JoinToCreate(commands.Cog):
         guild = interaction.guild
         if not guild:
             return False
-        if interaction.user.id == guild.owner_id:
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        return False
+        return (
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
+        )
 
     # ---------------- BOT READY ----------------
     @commands.Cog.listener()
@@ -57,25 +56,30 @@ class JoinToCreate(commands.Cog):
         )
 
     # ---------------- CREATE JTC ----------------
-    @app_commands.command(name="createjtc", description="Create a Join-to-Create voice channel")
-    async def create_jtc(self, interaction: discord.Interaction, category_id: int):
+    @app_commands.command(
+        name="createjtc",
+        description="Create Join-to-Create in current channel category"
+    )
+    async def create_jtc(self, interaction: discord.Interaction):
         if not await self.can_manage(interaction):
             return await interaction.response.send_message(
-                "You do not have permission to use this command.", ephemeral=True
+                "❌ You don't have permission.", ephemeral=True
+            )
+
+        if not interaction.channel or not interaction.channel.category:
+            return await interaction.response.send_message(
+                "❌ This channel is not inside a category.",
+                ephemeral=True
             )
 
         existing = jtc_col.find_one({"guild_id": interaction.guild.id})
         if existing:
             return await interaction.response.send_message(
-                "❌ Join-to-Create is already set up for this server.",
+                "❌ Join-to-Create is already enabled.",
                 ephemeral=True
             )
 
-        category = interaction.guild.get_channel(category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return await interaction.response.send_message(
-                "Invalid category ID.", ephemeral=True
-            )
+        category = interaction.channel.category
 
         channel = await interaction.guild.create_voice_channel(
             name="Join to Create",
@@ -89,22 +93,25 @@ class JoinToCreate(commands.Cog):
         })
 
         await interaction.response.send_message(
-            f"✅ Join-to-Create created in category **{category.name}**",
+            f"✅ Join-to-Create created in **{category.name}**",
             ephemeral=True
         )
 
     # ---------------- DELETE JTC ----------------
-    @app_commands.command(name="deletejtc", description="Delete the Join-to-Create channel")
+    @app_commands.command(
+        name="deletejtc",
+        description="Delete Join-to-Create system"
+    )
     async def delete_jtc(self, interaction: discord.Interaction):
         if not await self.can_manage(interaction):
             return await interaction.response.send_message(
-                "You do not have permission to use this command.", ephemeral=True
+                "❌ You don't have permission.", ephemeral=True
             )
 
         conf = jtc_col.find_one({"guild_id": interaction.guild.id})
         if not conf:
             return await interaction.response.send_message(
-                "❌ Join-to-Create is not configured in this server.",
+                "❌ Join-to-Create is not enabled.",
                 ephemeral=True
             )
 
@@ -116,63 +123,11 @@ class JoinToCreate(commands.Cog):
                 pass
 
         jtc_col.delete_one({"guild_id": interaction.guild.id})
+
         await interaction.response.send_message(
-            "✅ Join-to-Create system has been disabled.", ephemeral=True
+            "✅ Join-to-Create disabled successfully.",
+            ephemeral=True
         )
-
-    # ---------------- VC ALLOW ----------------
-    @app_commands.command(name="vcallow", description="Allow a member in your temporary VC")
-    async def vc_allow(self, interaction: discord.Interaction, member: discord.Member):
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            return await interaction.response.send_message(
-                "You must be inside your voice channel.", ephemeral=True
-            )
-
-        vc = interaction.user.voice.channel
-        creator_id = self.temp_channels.get(vc.id)
-
-        if interaction.user.id != creator_id and interaction.user.id != interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                "You do not have permission to manage this voice channel.", ephemeral=True
-            )
-
-        if member.id == interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                "Server owner already has full access.", ephemeral=True
-            )
-
-        await vc.set_permissions(member, connect=True, speak=True)
-        await interaction.response.send_message(f"{member.mention} is now allowed.", ephemeral=True)
-
-    # ---------------- VC REMOVE ----------------
-    @app_commands.command(name="vcremove", description="Remove a member from your temporary VC")
-    async def vc_remove(self, interaction: discord.Interaction, member: discord.Member):
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            return await interaction.response.send_message(
-                "You must be inside your voice channel.", ephemeral=True
-            )
-
-        vc = interaction.user.voice.channel
-        creator_id = self.temp_channels.get(vc.id)
-
-        if interaction.user.id != creator_id and interaction.user.id != interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                "You do not have permission to manage this voice channel.", ephemeral=True
-            )
-
-        if member.id == interaction.guild.owner_id:
-            return await interaction.response.send_message(
-                "Server owner cannot be removed.", ephemeral=True
-            )
-
-        if member in vc.members:
-            try:
-                await member.move_to(None)
-            except Exception:
-                pass
-
-        await vc.set_permissions(member, connect=False)
-        await interaction.response.send_message(f"{member.mention} has been removed.", ephemeral=True)
 
     # ---------------- VOICE LISTENER ----------------
     @commands.Cog.listener()
@@ -206,16 +161,16 @@ class JoinToCreate(commands.Cog):
             await member.move_to(vc)
             self.temp_channels[vc.id] = member.id
 
-        # -------- CREATOR LEFT --------
+        # -------- DELETE TEMP VC --------
         if before.channel and before.channel.id in self.temp_channels:
             vc = before.channel
             creator_id = self.temp_channels.get(vc.id)
-            owner = vc.guild.owner
 
             creator = vc.guild.get_member(creator_id)
+            owner = vc.guild.owner
+
             if creator and creator in vc.members:
                 return
-
             if owner and owner in vc.members:
                 return
 

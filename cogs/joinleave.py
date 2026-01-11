@@ -18,8 +18,18 @@ class JoinLeave(commands.Cog):
             or interaction.user.guild_permissions.administrator
         )
 
+    # ----------------- GET VC SAFELY (PER GUILD) -----------------
+    def get_voice_client(self, guild: discord.Guild):
+        for vc in self.bot.voice_clients:
+            if vc.guild.id == guild.id:
+                return vc
+        return None
+
     # ----------------- JOIN VC -----------------
-    @app_commands.command(name="join", description="Make the bot join a voice channel")
+    @app_commands.command(
+        name="join",
+        description="Make the bot join a voice channel"
+    )
     async def joinvc(
         self,
         interaction: discord.Interaction,
@@ -35,9 +45,9 @@ class JoinLeave(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            vc = interaction.guild.voice_client
+            vc = self.get_voice_client(interaction.guild)
 
-            if vc is not None and vc.is_connected():
+            if vc and vc.is_connected():
                 await vc.move_to(channel)
             else:
                 await channel.connect(self_deaf=True)
@@ -52,7 +62,10 @@ class JoinLeave(commands.Cog):
             )
 
     # ----------------- LEAVE VC -----------------
-    @app_commands.command(name="leave", description="Make the bot leave voice channel")
+    @app_commands.command(
+        name="leave",
+        description="Make the bot leave voice channel"
+    )
     async def leavevc(self, interaction: discord.Interaction):
         if not self.is_admin_or_owner(interaction):
             await interaction.response.send_message(
@@ -63,11 +76,11 @@ class JoinLeave(commands.Cog):
 
         await interaction.response.defer(ephemeral=True)
 
-        vc = interaction.guild.voice_client
+        vc = self.get_voice_client(interaction.guild)
 
-        if vc is None or not vc.is_connected():
+        if not vc or not vc.is_connected():
             await interaction.edit_original_response(
-                content="❌ Bot is not connected to any VC."
+                content="❌ Bot is not connected to any VC in this server."
             )
             return
 

@@ -2,7 +2,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-from database.models import autorenamer_col  # same style, reuse (or rename if you want)
+from database.models import autorenamer_col  # same DB, same collection
+
 
 class AutoRename(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -26,6 +27,17 @@ class AutoRename(commands.Cog):
             return
 
         guild_id = interaction.guild.id
+
+        # 🔒 DUPLICATE ENABLE CHECK
+        existing = autorenamer_col.find_one(
+            {"guild_id": guild_id, "enabled": True}
+        )
+        if existing:
+            return await interaction.response.send_message(
+                "❌ Auto rename is already **enabled** for this server.",
+                ephemeral=True
+            )
+
         autorenamer_col.update_one(
             {"guild_id": guild_id},
             {"$set": {"prefix": word, "enabled": True}},
@@ -44,7 +56,21 @@ class AutoRename(commands.Cog):
             return
 
         guild_id = interaction.guild.id
-        autorenamer_col.delete_one({"guild_id": guild_id})
+
+        # 🔒 DUPLICATE DISABLE CHECK
+        existing = autorenamer_col.find_one(
+            {"guild_id": guild_id, "enabled": True}
+        )
+        if not existing:
+            return await interaction.response.send_message(
+                "❌ Auto rename is already **disabled** for this server.",
+                ephemeral=True
+            )
+
+        autorenamer_col.update_one(
+            {"guild_id": guild_id},
+            {"$set": {"enabled": False}}
+        )
 
         await interaction.response.send_message(
             "🛑 Auto rename disabled",
@@ -57,8 +83,10 @@ class AutoRename(commands.Cog):
         if member.bot:
             return
 
-        data = autorenamer_col.find_one({"guild_id": member.guild.id})
-        if not data or not data.get("enabled"):
+        data = autorenamer_col.find_one(
+            {"guild_id": member.guild.id, "enabled": True}
+        )
+        if not data:
             return
 
         try:
@@ -103,9 +131,7 @@ class AutoRename(commands.Cog):
 
         guild = interaction.guild
         for member in guild.members:
-            if member.bot:
-                continue
-            if member.id == guild.owner_id:
+            if member.bot or member.id == guild.owner_id:
                 continue
             try:
                 await member.edit(nick=f"{word} {member.name}")
@@ -118,9 +144,10 @@ class AutoRename(commands.Cog):
             ephemeral=True
         )
 
-    # ----------------- COMMAND VISIBILITY -----------------
+    # ----------------- GLOBAL CHECK -----------------
     async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
         return await self.is_admin_or_owner(interaction)
+
 
 # ----------------- SETUP -----------------
 async def setup(bot: commands.Bot):

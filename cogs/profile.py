@@ -1,38 +1,54 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from datetime import datetime
 
 
 class Profile(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # 🔐 ADMIN / OWNER CHECK
-    def admin_or_owner():
-        async def predicate(ctx):
-            return (
-                ctx.author.guild_permissions.administrator
-                or ctx.author.id == ctx.guild.owner_id
-            )
-        return commands.check(predicate)
+    # ----------------- PERMISSION CHECK -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if not guild:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
-    @commands.command(name="profile")
-    @admin_or_owner()
-    async def profile(self, ctx, user: str = None):
+    # ----------------- PROFILE SLASH COMMAND -----------------
+    @app_commands.command(
+        name="profile",
+        description="Show profile of a user (mention or user ID)"
+    )
+    @app_commands.describe(user="Mention a user or provide user ID")
+    async def profile(
+        self,
+        interaction: discord.Interaction,
+        user: str
+    ):
+        if not await self.is_admin_or_owner(interaction):
+            return
 
-        if not user:
-            return await ctx.reply("❌ Usage: `!profile @user` OR `!profile user_id`")
+        await interaction.response.defer(ephemeral=False)
 
-        # 🔥 Resolve mention OR ID
+        # 🔥 Resolve mention OR ID (same logic)
         member = None
 
         if user.isdigit():
-            member = ctx.guild.get_member(int(user))
+            member = interaction.guild.get_member(int(user))
         else:
-            member = ctx.message.mentions[0] if ctx.message.mentions else None
+            if interaction.data.get("resolved", {}).get("users"):
+                user_id = next(iter(interaction.data["resolved"]["users"]))
+                member = interaction.guild.get_member(int(user_id))
 
         if not member:
-            return await ctx.reply("❌ User not found in this server.")
+            return await interaction.edit_original_response(
+                content="❌ User not found in this server."
+            )
 
         roles = [r for r in member.roles if r.name != "@everyone"]
         top_role = roles[-1].mention if roles else "None"
@@ -62,8 +78,16 @@ class Profile(commands.Cog):
 
         embed.set_footer(text="TEJAS • One bot. Infinite possibilities.")
 
-        await ctx.reply(embed=embed)
+        await interaction.edit_original_response(
+            content=None,
+            embed=embed
+        )
+
+    # ----------------- GLOBAL CHECK (SAME STYLE AS PING) -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
 
-async def setup(bot):
+# ----------------- SETUP -----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(Profile(bot))

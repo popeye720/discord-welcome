@@ -7,23 +7,16 @@ class JoinLeave(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -------- PERMISSION CHECK (OWNER + ADMIN) --------
-    async def is_admin_or_owner(self, interaction: discord.Interaction):
+    # -------- PERMISSION CHECK (NO RESPONSE HERE) --------
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
         guild = interaction.guild
         if not guild:
             return False
 
-        if interaction.user.id == guild.owner_id:
-            return True
-
-        if interaction.user.guild_permissions.administrator:
-            return True
-
-        await interaction.response.send_message(
-            "❌ You do not have permission to use this command.",
-            ephemeral=True
+        return (
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
         )
-        return False
 
     # -------- JOIN VOICE CHANNEL --------
     @app_commands.command(
@@ -36,7 +29,10 @@ class JoinLeave(commands.Cog):
         channel_id: int
     ):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return await interaction.response.send_message(
+                "❌ You do not have permission to use this command.",
+                ephemeral=True
+            )
 
         channel = interaction.guild.get_channel(channel_id)
 
@@ -63,7 +59,10 @@ class JoinLeave(commands.Cog):
     )
     async def leavevc(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return await interaction.response.send_message(
+                "❌ You do not have permission to use this command.",
+                ephemeral=True
+            )
 
         vc = interaction.guild.voice_client
 
@@ -79,14 +78,8 @@ class JoinLeave(commands.Cog):
             ephemeral=True
         )
 
-    # -------- GLOBAL SLASH CHECK --------
-    async def cog_app_command_check(
-        self,
-        interaction: discord.Interaction
-    ) -> bool:
-        return await self.is_admin_or_owner(interaction)
-
 
 # -------- SETUP --------
 async def setup(bot: commands.Bot):
     await bot.add_cog(JoinLeave(bot))
+    print("✅ JoinLeave cog loaded")    

@@ -59,12 +59,13 @@ class AudioDownloader(commands.Cog):
 
         embed = Embed(
             title="🎵 YouTube Audio Downloader",
-            description="Use `/audiodown <YouTube URL>` in this channel.",
+            description="Use `/audiodown <Youtube/instagram URL>` in this channel.",
             color=discord.Color.green()
         )
 
         msg = await channel.send(embed=embed)
 
+        # Save setup message ID in DB
         audiodown_col.update_one(
             {"guild_id": guild.id},
             {"$set": {
@@ -83,8 +84,8 @@ class AudioDownloader(commands.Cog):
     # -------------------------------
     # DOWNLOAD COMMAND
     # -------------------------------
-    @app_commands.command(name="audiodown", description="Download YouTube audio")
-    @app_commands.describe(url="YouTube video URL to download audio from")
+    @app_commands.command(name="audiodown", description="Download YouTube/instagram audio")
+    @app_commands.describe(url="YouTube/instagram video URL to download audio from")
     async def audiodown(
         self,
         interaction: discord.Interaction,
@@ -134,7 +135,7 @@ class AudioDownloader(commands.Cog):
                 info_opts = {
                     "format": "bestaudio",
                     "quiet": True,
-                    "noplaylist": True,
+                    "noplaylist": True,  # safety
                     "no_warnings": True,
                     "logger": None
                 }
@@ -142,6 +143,12 @@ class AudioDownloader(commands.Cog):
                 with open(os.devnull, "w") as fnull, contextlib.redirect_stdout(fnull), contextlib.redirect_stderr(fnull):
                     with yt_dlp.YoutubeDL(info_opts) as ydl:
                         info = ydl.extract_info(url, download=False)
+
+                # ---------- BLOCK PLAYLIST ----------
+                if "entries" in info:
+                    return await status_msg.edit(
+                        content=f"❌ {author.mention}, playlists are **not allowed**. Please provide a single video URL."
+                    )
 
                 if info.get("is_live"):
                     return await status_msg.edit(
@@ -229,6 +236,17 @@ class AudioDownloader(commands.Cog):
                 "⚠️ Audio downloader is not enabled.",
                 ephemeral=True
             )
+
+        # ---------- DELETE SETUP MESSAGE ----------
+        try:
+            channel = interaction.guild.get_channel(data["channel_id"])
+            msg_id = data.get("setup_msg_id")
+            if channel and msg_id:
+                msg = await channel.fetch_message(msg_id)
+                if msg:
+                    await msg.delete()
+        except:
+            pass  # ignore if already deleted
 
         audiodown_col.update_one(
             {"guild_id": interaction.guild.id},

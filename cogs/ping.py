@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import time
 
 
@@ -8,24 +9,33 @@ class Ping(commands.Cog):
         self.bot = bot
 
     # -------- ADMIN / OWNER CHECK --------
-    def is_admin():
-        async def predicate(ctx):
-            return (
-                ctx.author.guild_permissions.administrator
-                or ctx.author.id == ctx.guild.owner_id
-            )
-        return commands.check(predicate)
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if guild is None:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
     # -------- PING COMMAND --------
-    @commands.command(name="ping")
-    @is_admin()
-    async def ping(self, ctx):
+    @app_commands.command(name="ping", description="Check bot latency")
+    @app_commands.default_permissions(administrator=True)
+    async def ping(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only server owner or admins can use this.",
+                ephemeral=True
+            )
+
         # Websocket latency
         ws_latency = round(self.bot.latency * 1000)
 
         # Message latency
         start = time.perf_counter()
-        msg = await ctx.send("🏓 Checking ping...")
+        await interaction.response.send_message("🏓 Checking ping...")
+        msg = await interaction.original_response()
         end = time.perf_counter()
 
         msg_latency = round((end - start) * 1000)

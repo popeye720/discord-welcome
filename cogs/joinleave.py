@@ -1,101 +1,75 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-
+from typing import Optional
 
 class JoinLeave(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ----------------- PERMISSION CHECK -----------------
-    def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
-        guild = interaction.guild
-        if not guild:
+    # Helper: Permission Check
+    def has_permissions(self, interaction: discord.Interaction) -> bool:
+        if not interaction.guild:
             return False
-
         return (
-            interaction.user.id == guild.owner_id
+            interaction.user.id == interaction.guild.owner_id 
             or interaction.user.guild_permissions.administrator
         )
 
-    # ----------------- GET VC SAFELY (PER GUILD) -----------------
-    def get_voice_client(self, guild: discord.Guild):
-        for vc in self.bot.voice_clients:
-            if vc.guild.id == guild.id:
-                return vc
-        return None
-
-    # ----------------- JOIN VC -----------------
     @app_commands.command(
         name="join",
         description="Make the bot join a voice channel"
     )
-    async def joinvc(
+    @app_commands.describe(channel="The voice channel to join (optional if you are in one)")
+    async def join(
         self,
         interaction: discord.Interaction,
-        channel: discord.VoiceChannel
+        channel: Optional[discord.VoiceChannel] = None
     ):
-        if not self.is_admin_or_owner(interaction):
-            await interaction.response.send_message(
-                "❌ You don't have permission.",
-                ephemeral=True
-            )
-            return
+        if not self.has_permissions(interaction):
+            return await interaction.response.send_message("❌ You lack Administrator permissions.", ephemeral=True)
 
         await interaction.response.defer(ephemeral=True)
 
+        # Determine target channel: specified channel OR user's current channel
+        target_channel = channel or (interaction.user.voice.channel if interaction.user.voice else None)
+
+        if not target_channel:
+            return await interaction.edit_original_response(
+                content="❌ Please specify a channel or join one yourself first."
+            )
+
         try:
-            vc = self.get_voice_client(interaction.guild)
+            # interaction.guild.voice_client is the cleanest way to get the bot's VC in that server
+            vc = interaction.guild.voice_client
 
-            if vc and vc.is_connected():
-                await vc.move_to(channel)
+            if vc:
+                await vc.move_to(target_channel)
             else:
-                await channel.connect(self_deaf=True)
+                await target_channel.connect(self_deaf=True)
 
-            await interaction.edit_original_response(
-                content=f"✅ Joined **{channel.name}**"
-            )
-
+            await interaction.edit_original_response(content=f"✅ Joined **{target_channel.name}**")
+        
         except Exception as e:
-            await interaction.edit_original_response(
-                content=f"❌ Failed to join VC\n`{e}`"
-            )
+            await interaction.edit_original_response(content=f"❌ Error: `{e}`")
 
-    # ----------------- LEAVE VC -----------------
     @app_commands.command(
         name="leave",
-        description="Make the bot leave voice channel"
+        description="Disconnect the bot from voice"
     )
-    async def leavevc(self, interaction: discord.Interaction):
-        if not self.is_admin_or_owner(interaction):
-            await interaction.response.send_message(
-                "❌ You don't have permission.",
-                ephemeral=True
-            )
-            return
+    async def leave(self, interaction: discord.Interaction):
+        if not self.has_permissions(interaction):
+            return await interaction.response.send_message("❌ You lack Administrator permissions.", ephemeral=True)
 
         await interaction.response.defer(ephemeral=True)
+        
+        vc = interaction.guild.voice_client
 
-        vc = self.get_voice_client(interaction.guild)
+        if not vc:
+            return await interaction.edit_original_response(content="❌ I am not connected to any voice channel.")
 
-        if not vc or not vc.is_connected():
-            await interaction.edit_original_response(
-                content="❌ Bot is not connected to any VC in this server."
-            )
-            return
-
-        try:
-            await vc.disconnect()
-
-            await interaction.edit_original_response(
-                content="✅ Left the voice channel"
-            )
-
-        except Exception as e:
-            await interaction.edit_original_response(
-                content=f"❌ Failed to leave VC\n`{e}`"
-            )
-
+        await vc.disconnect()
+        await interaction.edit_original_response(content="✅ Successfully disconnected.")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(JoinLeave(bot))

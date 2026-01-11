@@ -10,36 +10,48 @@ class JoinLeave(commands.Cog):
     # ----------------- PERMISSION CHECK -----------------
     async def is_admin_or_owner(self, interaction: discord.Interaction):
         guild = interaction.guild
-        if not guild:
-            return False
-        if interaction.user.id == guild.owner_id:
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        return False
+        return (
+            guild
+            and (
+                interaction.user.id == guild.owner_id
+                or interaction.user.guild_permissions.administrator
+            )
+        )
 
     # ----------------- JOIN VC -----------------
     @app_commands.command(
         name="join",
         description="Make the bot join a voice channel"
     )
+    @app_commands.describe(channel="Voice channel to join")
     async def joinvc(
         self,
         interaction: discord.Interaction,
         channel: discord.VoiceChannel
     ):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return await interaction.response.send_message(
+                "❌ You don't have permission.",
+                ephemeral=True
+            )
 
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.move_to(channel)
-        else:
-            await channel.connect()
+        # 🔥 ACK immediately
+        await interaction.response.defer(ephemeral=True)
 
-        await interaction.response.send_message(
-            f"✅ Joined **{channel.name}**",
-            ephemeral=True
-        )
+        try:
+            if interaction.guild.voice_client:
+                await interaction.guild.voice_client.move_to(channel)
+            else:
+                await channel.connect()
+
+            await interaction.edit_original_response(
+                content=f"✅ Joined **{channel.name}**"
+            )
+
+        except Exception as e:
+            await interaction.edit_original_response(
+                content=f"❌ Failed to join VC\n`{e}`"
+            )
 
     # ----------------- LEAVE VC -----------------
     @app_commands.command(
@@ -48,7 +60,10 @@ class JoinLeave(commands.Cog):
     )
     async def leavevc(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return await interaction.response.send_message(
+                "❌ You don't have permission.",
+                ephemeral=True
+            )
 
         vc = interaction.guild.voice_client
         if not vc:
@@ -57,17 +72,25 @@ class JoinLeave(commands.Cog):
                 ephemeral=True
             )
 
-        await vc.disconnect()
-        await interaction.response.send_message(
-            "✅ Left the voice channel",
-            ephemeral=True
-        )
+        # 🔥 ACK immediately
+        await interaction.response.defer(ephemeral=True)
 
-    # ----------------- GLOBAL SLASH CHECK -----------------
+        try:
+            await vc.disconnect(force=True)  # ⚡ immediate leave
+
+            await interaction.edit_original_response(
+                content="✅ Left the voice channel"
+            )
+
+        except Exception as e:
+            await interaction.edit_original_response(
+                content=f"❌ Failed to leave VC\n`{e}`"
+            )
+
+    # ----------------- GLOBAL CHECK -----------------
     async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
         return await self.is_admin_or_owner(interaction)
 
 
-# ----------------- SETUP -----------------
 async def setup(bot: commands.Bot):
     await bot.add_cog(JoinLeave(bot))

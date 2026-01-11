@@ -1,32 +1,36 @@
 import random
 import discord
 from discord.ext import commands
+from discord import app_commands
 from database.models import fungames_col
+import asyncio
 
 
 class FunGames(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -------- ADMIN / OWNER CHECK --------
-    def is_admin():
-        async def predicate(ctx):
-            return (
-                ctx.author.guild_permissions.administrator
-                or ctx.author.id == ctx.guild.owner_id
+    # ----------------- PERMISSION CHECK -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if not guild:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
+
+    # ----------------- SET FUN GAMES CHANNEL -----------------
+    @app_commands.command(name="fungames", description="Set fun games channel")
+    async def set_fungames(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        if fungames_col.find_one({"guild_id": interaction.guild.id}):
+            return await interaction.response.send_message(
+                "⚠️ Fun games already set.", ephemeral=True
             )
-        return commands.check(predicate)
-
-    # -------- SET FUN GAMES CHANNEL --------
-    @commands.command(name="fungames")
-    @is_admin()
-    async def set_fungames(self, ctx, channel_id: int):
-        if fungames_col.find_one({"guild_id": ctx.guild.id}):
-            return await ctx.reply("⚠️ Fun games already set.")
-
-        channel = ctx.guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.TextChannel):
-            return await ctx.reply("❌ Invalid channel ID.")
 
         # -------- EMBED HELP MESSAGE --------
         embed = discord.Embed(
@@ -36,17 +40,17 @@ class FunGames(commands.Cog):
         )
 
         embed.add_field(
-            name="🪙 !coinflip",
+            name="🪙 /coinflip",
             value="Flip a coin and get **Heads** or **Tails**.",
             inline=False
         )
         embed.add_field(
-            name="🎲 !dice",
+            name="🎲 /dice",
             value="Roll a dice and get a number from **1 to 6**.",
             inline=False
         )
         embed.add_field(
-            name="🎱 !8ball <question>",
+            name="🎱 /8ball <question>",
             value="Ask a yes/no question and get a fun answer.",
             inline=False
         )
@@ -57,25 +61,29 @@ class FunGames(commands.Cog):
 
         # -------- SAVE TO DB --------
         fungames_col.insert_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "channel_id": channel.id,
             "message_id": help_msg.id
         })
 
-        await ctx.reply(f"✅ Fun games enabled in {channel.mention}")
+        await interaction.response.send_message(
+            f"✅ Fun games enabled in {channel.mention}", ephemeral=True
+        )
 
-    # -------- DELETE FUN GAMES --------
-    @commands.command(name="delfungames")
-    @is_admin()
-    async def del_fungames(self, ctx):
-        data = fungames_col.find_one_and_delete({
-            "guild_id": ctx.guild.id
-        })
+    # ----------------- DELETE FUN GAMES -----------------
+    @app_commands.command(name="delfungames", description="Disable fun games")
+    async def del_fungames(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        data = fungames_col.find_one_and_delete({"guild_id": interaction.guild.id})
 
         if not data:
-            return await ctx.reply("❌ Fun games not set.")
+            return await interaction.response.send_message(
+                "❌ Fun games not set.", ephemeral=True
+            )
 
-        channel = ctx.guild.get_channel(data["channel_id"])
+        channel = interaction.guild.get_channel(data["channel_id"])
         if channel:
             try:
                 msg = await channel.fetch_message(data["message_id"])
@@ -83,83 +91,73 @@ class FunGames(commands.Cog):
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
 
-            await ctx.reply(f"✅ Fun games disabled for {channel.mention}")
+            await interaction.response.send_message(
+                f"✅ Fun games disabled for {channel.mention}", ephemeral=True
+            )
         else:
-            await ctx.reply("✅ Fun games system deleted.")
+            await interaction.response.send_message(
+                "✅ Fun games system deleted.", ephemeral=True
+            )
 
-    # -------- CHECK CHANNEL --------
-    async def check_channel(self, ctx):
-        data = fungames_col.find_one({"guild_id": ctx.guild.id})
+    # ----------------- CHECK CHANNEL -----------------
+    async def check_channel(self, interaction: discord.Interaction):
+        data = fungames_col.find_one({"guild_id": interaction.guild.id})
         if not data:
             return False
 
-        if ctx.channel.id != data["channel_id"]:
+        if interaction.channel.id != data["channel_id"]:
             try:
-                await ctx.message.delete()
+                await interaction.response.send_message(
+                    f"❌ {interaction.user.mention} use fun commands in <#{data['channel_id']}>",
+                    ephemeral=True
+                )
             except discord.Forbidden:
                 pass
-
-            msg = await ctx.send(
-                f"❌ {ctx.author.mention} use fun commands in <#{data['channel_id']}>"
-            )
-            await msg.delete(delay=3)
             return False
 
         return True
 
-    # -------- COINFLIP --------
-    @commands.command(name="coinflip")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def coinflip(self, ctx):
-        if not await self.check_channel(ctx):
+    # ----------------- COINFLIP -----------------
+    @app_commands.command(name="coinflip", description="Flip a coin")
+    async def coinflip(self, interaction: discord.Interaction):
+        if not await self.check_channel(interaction):
             return
-        await ctx.send(
-            f"{ctx.author.mention} → **{random.choice(['🪙 Heads', '🪙 Tails'])}**"
+
+        await interaction.response.send_message(
+            f"{interaction.user.mention} → **{random.choice(['🪙 Heads', '🪙 Tails'])}**"
         )
 
-    # -------- DICE --------
-    @commands.command(name="dice")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def dice(self, ctx):
-        if not await self.check_channel(ctx):
+    # ----------------- DICE -----------------
+    @app_commands.command(name="dice", description="Roll a dice")
+    async def dice(self, interaction: discord.Interaction):
+        if not await self.check_channel(interaction):
             return
-        await ctx.send(
-            f"🎲 {ctx.author.mention} rolled **{random.randint(1, 6)}**"
+
+        await interaction.response.send_message(
+            f"🎲 {interaction.user.mention} rolled **{random.randint(1, 6)}**"
         )
 
-    # -------- 8BALL --------
-    @commands.command(name="8ball")
-    @commands.cooldown(1, 5, commands.BucketType.user)
-    async def eightball(self, ctx, *, question: str = None):
-        if not await self.check_channel(ctx):
+    # ----------------- 8BALL -----------------
+    @app_commands.command(name="8ball", description="Ask the magic 8ball")
+    async def eightball(self, interaction: discord.Interaction, question: str):
+        if not await self.check_channel(interaction):
             return
-
-        if not question:
-            msg = await ctx.send("❓ Ask a question!")
-            return await msg.delete(delay=3)
 
         responses = [
             "Yes ✅", "No ❌", "Maybe 🤔",
             "Definitely ✔️", "Ask again later 🔮"
         ]
 
-        await ctx.send(
+        await interaction.response.send_message(
             f"🎱 **Question:** {question}\n"
             f"**Answer:** {random.choice(responses)}"
         )
 
-    # -------- COOLDOWN HANDLER --------
-    async def cooldown_error(self, ctx, error):
-        if isinstance(error, commands.CommandOnCooldown):
-            msg = await ctx.send(
-                f"⏳ {ctx.author.mention} wait **{error.retry_after:.1f}s**"
-            )
-            await msg.delete(delay=3)
-
-    coinflip.error = cooldown_error
-    dice.error = cooldown_error
-    eightball.error = cooldown_error
+    # ----------------- GLOBAL CHECK -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
 
-async def setup(bot):
+# ----------------- SETUP -----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(FunGames(bot))

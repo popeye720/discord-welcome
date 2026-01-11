@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import asyncio
-from database.models import autorenamer_col  # same DB, same collection
+from database.models import autorenamer_col  
 
 
 class AutoRename(commands.Cog):
@@ -67,10 +67,8 @@ class AutoRename(commands.Cog):
                 ephemeral=True
             )
 
-        autorenamer_col.update_one(
-            {"guild_id": guild_id},
-            {"$set": {"enabled": False}}
-        )
+        # 🔥 DELETE DB ENTRY COMPLETELY
+        autorenamer_col.delete_one({"guild_id": guild_id})
 
         await interaction.response.send_message(
             "🛑 Auto rename disabled",

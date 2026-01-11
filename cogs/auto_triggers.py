@@ -54,22 +54,24 @@ class AutoTriggers(commands.Cog):
         trigger = trigger.lower()
         cooldown = cooldown if cooldown is not None else DEFAULT_COOLDOWN
 
-        existing = autotrigger_col.find_one({
-            "guild_id": interaction.guild.id,
-            "trigger": trigger
-        })
-        if existing:
+        # Get guild document or create if not exists
+        guild_data = autotrigger_col.find_one({"guild_id": interaction.guild.id})
+        if not guild_data:
+            guild_data = {"guild_id": interaction.guild.id, "triggers": {}}
+            autotrigger_col.insert_one(guild_data)
+
+        # Check if trigger exists
+        if trigger in guild_data["triggers"]:
             return await interaction.response.send_message(
                 f"⚠️ Trigger `{trigger}` already exists.",
                 ephemeral=True
             )
 
-        autotrigger_col.insert_one({
-            "guild_id": interaction.guild.id,
-            "trigger": trigger,
-            "reply": reply,
-            "cooldown": cooldown
-        })
+        # Add trigger
+        autotrigger_col.update_one(
+            {"guild_id": interaction.guild.id},
+            {"$set": {f"triggers.{trigger}": {"reply": reply, "cooldown": cooldown}}}
+        )
 
         await interaction.response.send_message(
             f"✅ Trigger `{trigger}` added with cooldown `{cooldown}s`.",
@@ -94,16 +96,17 @@ class AutoTriggers(commands.Cog):
 
         trigger = trigger.lower()
 
-        result = autotrigger_col.find_one_and_delete({
-            "guild_id": interaction.guild.id,
-            "trigger": trigger
-        })
-
-        if not result:
+        guild_data = autotrigger_col.find_one({"guild_id": interaction.guild.id})
+        if not guild_data or trigger not in guild_data.get("triggers", {}):
             return await interaction.response.send_message(
                 f"⚠️ Trigger `{trigger}` does not exist.",
                 ephemeral=True
             )
+
+        autotrigger_col.update_one(
+            {"guild_id": interaction.guild.id},
+            {"$unset": {f"triggers.{trigger}": ""}}
+        )
 
         await interaction.response.send_message(
             f"✅ Trigger `{trigger}` deleted successfully.",
@@ -121,20 +124,16 @@ class AutoTriggers(commands.Cog):
                 ephemeral=True
             )
 
-        triggers = autotrigger_col.find(
-            {"guild_id": interaction.guild.id},
-            {"trigger": 1, "cooldown": 1, "_id": 0}
-        )
+        guild_data = autotrigger_col.find_one({"guild_id": interaction.guild.id})
+        triggers = guild_data.get("triggers", {}) if guild_data else {}
 
-        items = sorted([(t["trigger"], t.get("cooldown", DEFAULT_COOLDOWN)) for t in triggers])
-
-        if not items:
+        if not triggers:
             return await interaction.response.send_message(
                 "No triggers are set yet.",
                 ephemeral=True
             )
 
-        text = "\n".join([f"**{name}** → {cd}s" for name, cd in items])
+        text = "\n".join([f"**{t}** → {v.get('cooldown', DEFAULT_COOLDOWN)}s" for t, v in triggers.items()])
 
         embed = discord.Embed(
             title="Trigger List",
@@ -154,13 +153,13 @@ class AutoTriggers(commands.Cog):
 
         content = message.content.lower().strip()
 
-        data = autotrigger_col.find_one({
-            "guild_id": message.guild.id,
-            "trigger": content
-        })
+        guild_data = autotrigger_col.find_one({"guild_id": message.guild.id})
+        triggers = guild_data.get("triggers", {}) if guild_data else {}
 
-        if not data:
+        if content not in triggers:
             return
+
+        data = triggers[content]
 
         # cooldown per user
         now = time.time()

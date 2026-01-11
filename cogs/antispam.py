@@ -9,7 +9,7 @@ from database.models import antispam_col  # ✅ SAME STRUCTURE
 # ================= DEFAULT SETTINGS =================
 DEFAULT_MESSAGE_LIMIT = 5
 DEFAULT_TIME_WINDOW = 7
-DEFAULT_TIMEOUT_SECONDS = 300  # 5 minutes
+DEFAULT_TIMEOUT_MINUTES = 5  # 5 minutes
 
 class AntiSpam(commands.Cog):
     def __init__(self, bot):
@@ -36,14 +36,14 @@ class AntiSpam(commands.Cog):
     @discord.app_commands.describe(
         message_limit="Maximum messages allowed before timeout (default 5)",
         time_window="Time window in seconds to check messages (default 7)",
-        timeout_seconds="Timeout duration in seconds (default 300)"
+        timeout_minutes="Timeout duration in minutes (default 5)"
     )
     async def antispam(
         self,
         interaction: discord.Interaction,
         message_limit: int = DEFAULT_MESSAGE_LIMIT,
         time_window: int = DEFAULT_TIME_WINDOW,
-        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+        timeout_minutes: int = DEFAULT_TIMEOUT_MINUTES
     ):
         if not self.is_admin_or_owner(interaction.user):
             return await interaction.response.send_message(
@@ -61,13 +61,13 @@ class AntiSpam(commands.Cog):
             "enabled": True,
             "message_limit": message_limit,
             "time_window": time_window,
-            "timeout_seconds": timeout_seconds
+            "timeout_minutes": timeout_minutes
         })
 
         await interaction.response.send_message(
             "✅ **Anti-Spam Enabled**\n\n"
             f"📨 Messages: `{message_limit}` in `{time_window}` sec\n"
-            f"⛔ Timeout: `{timeout_seconds // 60}` minutes"
+            f"⛔ Timeout: `{timeout_minutes}` minutes"
         )
 
     # -------------------------------
@@ -115,7 +115,7 @@ class AntiSpam(commands.Cog):
             name="Rules",
             value=(
                 f"📨 `{data['message_limit']}` messages in `{data['time_window']}` seconds\n"
-                f"⛔ Timeout: `{data['timeout_seconds'] // 60}` minutes"
+                f"⛔ Timeout: `{data['timeout_minutes']}` minutes"
             ),
             inline=False
         )
@@ -194,7 +194,7 @@ class AntiSpam(commands.Cog):
             try:
                 await member.timeout(
                     discord.utils.utcnow()
-                    + timedelta(seconds=config["timeout_seconds"]),
+                    + timedelta(minutes=config["timeout_minutes"]),
                     reason="Spamming messages"
                 )
             except:
@@ -207,7 +207,7 @@ class AntiSpam(commands.Cog):
                         title="🚫 Spamming Detected",
                         description=(
                             "**You are sending messages too fast.**\n\n"
-                            f"⏳ Timeout: `{config['timeout_seconds'] // 60}` minutes"
+                            f"⏳ Timeout: `{config['timeout_minutes']}` minutes"
                         ),
                         color=discord.Color.red()
                     )
@@ -216,7 +216,7 @@ class AntiSpam(commands.Cog):
                 pass
 
             # 🔓 UNLOCK AFTER TIMEOUT
-            await asyncio.sleep(config["timeout_seconds"])
+            await asyncio.sleep(config["timeout_minutes"] * 60)
             self.locked_users.discard(user_id)
 
 

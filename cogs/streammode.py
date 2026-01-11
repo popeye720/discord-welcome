@@ -49,7 +49,7 @@ class StreamMode(commands.Cog):
         )
 
     # ---------------- STREAM MODE OFF ----------------
-    @commands.command(name="streamoff")
+    @commands.command(name="streammodeoff")
     @commands.guild_only()
     async def streamoff(self, ctx):
         if not self.has_permission(ctx):

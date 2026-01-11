@@ -9,7 +9,7 @@ from database.models import antispam_col  # ✅ SAME STRUCTURE
 # ================= DEFAULT SETTINGS =================
 DEFAULT_MESSAGE_LIMIT = 5
 DEFAULT_TIME_WINDOW = 7
-DEFAULT_TIMEOUT_SECONDS = 600  # 10 minutes
+DEFAULT_TIMEOUT_SECONDS = 300  # 5 minutes
 
 class AntiSpam(commands.Cog):
     def __init__(self, bot):
@@ -29,57 +29,81 @@ class AntiSpam(commands.Cog):
     # -------------------------------
     # ENABLE ANTISPAM
     # -------------------------------
-    @commands.command(name="antispam")
-    @commands.guild_only()
-    async def antispam(self, ctx):
-        if not self.is_admin_or_owner(ctx.author):
-            return await ctx.reply("❌ Only **Admin or Owner** can use this command.")
+    @discord.app_commands.command(
+        name="antispam",
+        description="Enable anti-spam in your server with optional settings"
+    )
+    @discord.app_commands.describe(
+        message_limit="Maximum messages allowed before timeout (default 5)",
+        time_window="Time window in seconds to check messages (default 7)",
+        timeout_seconds="Timeout duration in seconds (default 300)"
+    )
+    async def antispam(
+        self,
+        interaction: discord.Interaction,
+        message_limit: int = DEFAULT_MESSAGE_LIMIT,
+        time_window: int = DEFAULT_TIME_WINDOW,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+    ):
+        if not self.is_admin_or_owner(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Owner** can use this command.", ephemeral=True
+            )
 
-        data = antispam_col.find_one({"guild_id": ctx.guild.id})
-
+        data = antispam_col.find_one({"guild_id": interaction.guild.id})
         if data:
-            return await ctx.reply("⚠️ **Anti-Spam is already ENABLED.**")
+            return await interaction.response.send_message(
+                "⚠️ **Anti-Spam is already ENABLED.**", ephemeral=True
+            )
 
         antispam_col.insert_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "enabled": True,
-            "message_limit": DEFAULT_MESSAGE_LIMIT,
-            "time_window": DEFAULT_TIME_WINDOW,
-            "timeout_seconds": DEFAULT_TIMEOUT_SECONDS
+            "message_limit": message_limit,
+            "time_window": time_window,
+            "timeout_seconds": timeout_seconds
         })
 
-        await ctx.reply(
+        await interaction.response.send_message(
             "✅ **Anti-Spam Enabled**\n\n"
-            f"📨 Messages: `{DEFAULT_MESSAGE_LIMIT}` in `{DEFAULT_TIME_WINDOW}` sec\n"
-            f"⛔ Timeout: `{DEFAULT_TIMEOUT_SECONDS // 60}` minutes"
+            f"📨 Messages: `{message_limit}` in `{time_window}` sec\n"
+            f"⛔ Timeout: `{timeout_seconds // 60}` minutes"
         )
 
     # -------------------------------
     # DISABLE ANTISPAM
     # -------------------------------
-    @commands.command(name="offantispam")
-    @commands.guild_only()
-    async def offantispam(self, ctx):
-        if not self.is_admin_or_owner(ctx.author):
-            return await ctx.reply("❌ Only **Admin or Owner** can use this command.")
+    @discord.app_commands.command(
+        name="offantispam",
+        description="Disable anti-spam in your server"
+    )
+    async def offantispam(self, interaction: discord.Interaction):
+        if not self.is_admin_or_owner(interaction.user):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Owner** can use this command.", ephemeral=True
+            )
 
-        data = antispam_col.find_one({"guild_id": ctx.guild.id})
+        data = antispam_col.find_one({"guild_id": interaction.guild.id})
         if not data:
-            return await ctx.reply("⚠️ **Anti-Spam is already DISABLED.**")
+            return await interaction.response.send_message(
+                "⚠️ **Anti-Spam is already DISABLED.**", ephemeral=True
+            )
 
-        antispam_col.delete_one({"guild_id": ctx.guild.id})
-        await ctx.reply("🟢 **Anti-Spam Disabled Successfully.**")
+        antispam_col.delete_one({"guild_id": interaction.guild.id})
+        await interaction.response.send_message("🟢 **Anti-Spam Disabled Successfully.**")
 
     # -------------------------------
     # STATUS ANTISPAM
     # -------------------------------
-    @commands.command(name="statusantispam")
-    @commands.guild_only()
-    async def statusantispam(self, ctx):
-        data = antispam_col.find_one({"guild_id": ctx.guild.id})
+    @discord.app_commands.command(
+        name="statusantispam",
+        description="Check the status of anti-spam"
+    )
+    async def statusantispam(self, interaction: discord.Interaction):
+        data = antispam_col.find_one({"guild_id": interaction.guild.id})
 
         if not data:
-            return await ctx.reply("🔴 **Anti-Spam Status:** OFF")
+            return await interaction.response.send_message("🔴 **Anti-Spam Status:** OFF")
 
         embed = discord.Embed(
             title="🛡 Anti-Spam Status",
@@ -102,7 +126,7 @@ class AntiSpam(commands.Cog):
             inline=False
         )
 
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     # -------------------------------
     # MESSAGE LISTENER
@@ -138,7 +162,6 @@ class AntiSpam(commands.Cog):
             return
 
         now = time.time()
-
         self.user_messages[user_id].append((now, message))
 
         # Cleanup old
@@ -195,6 +218,7 @@ class AntiSpam(commands.Cog):
             # 🔓 UNLOCK AFTER TIMEOUT
             await asyncio.sleep(config["timeout_seconds"])
             self.locked_users.discard(user_id)
+
 
 async def setup(bot):
     await bot.add_cog(AntiSpam(bot))

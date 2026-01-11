@@ -176,12 +176,6 @@ class AntiLinks(commands.Cog):
             return
 
         # -------------------------------
-        # ALLOW !audiodown COMMAND
-        # -------------------------------
-        if message.content.startswith("!audiodown "):
-            return
-
-        # -------------------------------
         # CHECK FOR LINKS
         # -------------------------------
         if not LINK_REGEX.search(message.content):

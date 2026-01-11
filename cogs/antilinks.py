@@ -1,6 +1,7 @@
 import re
 import discord
 from discord.ext import commands
+from discord import app_commands
 from database.models import antilinks_col  # 👈 Mongo collection
 
 LINK_REGEX = re.compile(
@@ -9,99 +10,127 @@ LINK_REGEX = re.compile(
 )
 
 class AntiLinks(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     # -------------------------------
     # PERMISSION CHECK
     # -------------------------------
-    def is_admin_or_owner(self, member: discord.Member):
-        return (
-            member.id == member.guild.owner_id
-            or member.guild_permissions.administrator
-        )
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
     # -------------------------------
     # ENABLE / ADD ROLE
     # -------------------------------
-    @commands.command(name="antilinks")
-    @commands.guild_only()
-    async def antilinks(self, ctx, role: discord.Role = None):
-        if not self.is_admin_or_owner(ctx.author):
-            return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
+    @app_commands.command(name="antilinks", description="Enable Anti-Links")
+    @app_commands.describe(role="Role that can send links")
+    async def antilinks(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role = None
+    ):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Server Owner** can use this command.",
+                ephemeral=True
+            )
 
-        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
+        data = antilinks_col.find_one({"guild_id": interaction.guild.id})
 
         # 🟢 FIRST TIME ENABLE
         if not data:
             antilinks_col.insert_one({
-                "guild_id": ctx.guild.id,
+                "guild_id": interaction.guild.id,
                 "enabled": True,
                 "allowed_roles": [role.id] if role else []
             })
 
             if role:
-                return await ctx.reply(
+                return await interaction.response.send_message(
                     f"✅ **Anti-Links Enabled**\n"
-                    f"🔓 Allowed Role: {role.mention}"
+                    f"🔓 Allowed Role: {role.mention}",
+                    ephemeral=True
                 )
-            return await ctx.reply(
+            return await interaction.response.send_message(
                 "✅ **Anti-Links Enabled**\n"
-                "🔒 Only **Admins & Owner** can send links"
+                "🔒 Only **Admins & Owner** can send links",
+                ephemeral=True
             )
 
         # 🔁 ALREADY ENABLED
         if data.get("enabled"):
             if not role:
-                return await ctx.reply("⚠️ **Anti-Links is already ENABLED**.")
+                return await interaction.response.send_message(
+                    "⚠️ **Anti-Links is already ENABLED**.",
+                    ephemeral=True
+                )
 
             allowed_roles = data.get("allowed_roles", [])
 
             if role.id in allowed_roles:
-                return await ctx.reply(
-                    f"⚠️ {role.mention} is **already allowed**."
+                return await interaction.response.send_message(
+                    f"⚠️ {role.mention} is **already allowed**.",
+                    ephemeral=True
                 )
 
             antilinks_col.update_one(
-                {"guild_id": ctx.guild.id},
+                {"guild_id": interaction.guild.id},
                 {"$push": {"allowed_roles": role.id}}
             )
 
-            return await ctx.reply(
-                f"✅ Role Added: {role.mention} can now send links."
+            return await interaction.response.send_message(
+                f"✅ Role Added: {role.mention} can now send links.",
+                ephemeral=True
             )
 
     # -------------------------------
     # DISABLE ANTILINKS
     # -------------------------------
-    @commands.command(name="offantilinks")
-    @commands.guild_only()
-    async def offantilinks(self, ctx):
-        if not self.is_admin_or_owner(ctx.author):
-            return await ctx.reply("❌ Only **Admin or Server Owner** can use this command.")
+    @app_commands.command(name="offantilinks", description="Disable Anti-Links")
+    async def offantilinks(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Server Owner** can use this command.",
+                ephemeral=True
+            )
 
-        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
+        data = antilinks_col.find_one({"guild_id": interaction.guild.id})
 
         if not data:
-            return await ctx.reply("⚠️ **Anti-Links is already DISABLED**.")
+            return await interaction.response.send_message(
+                "⚠️ **Anti-Links is already DISABLED**.",
+                ephemeral=True
+            )
 
-        antilinks_col.delete_one({"guild_id": ctx.guild.id})
-        await ctx.reply("🟢 **Anti-Links Disabled Successfully**.")
+        antilinks_col.delete_one({"guild_id": interaction.guild.id})
+        await interaction.response.send_message(
+            "🟢 **Anti-Links Disabled Successfully**.",
+            ephemeral=True
+        )
 
     # -------------------------------
     # STATUS COMMAND
     # -------------------------------
-    @commands.command(name="statusantilinks")
-    @commands.guild_only()
-    async def statusantilinks(self, ctx):
-        data = antilinks_col.find_one({"guild_id": ctx.guild.id})
+    @app_commands.command(name="statusantilinks", description="Check Anti-Links status")
+    async def statusantilinks(self, interaction: discord.Interaction):
+        data = antilinks_col.find_one({"guild_id": interaction.guild.id})
 
         if not data:
-            return await ctx.reply("🔴 **Anti-Links Status:** OFF")
+            return await interaction.response.send_message(
+                "🔴 **Anti-Links Status:** OFF",
+                ephemeral=True
+            )
 
         role_mentions = []
         for rid in data.get("allowed_roles", []):
-            role = ctx.guild.get_role(rid)
+            role = interaction.guild.get_role(rid)
             if role:
                 role_mentions.append(role.mention)
 
@@ -128,7 +157,7 @@ class AntiLinks(commands.Cog):
             inline=False
         )
 
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # -------------------------------
     # MESSAGE LISTENER
@@ -150,7 +179,6 @@ class AntiLinks(commands.Cog):
         # ALLOW !audiodown COMMAND
         # -------------------------------
         if message.content.startswith("!audiodown "):
-            # Always allow for anyone (admin, owner, normal user)
             return
 
         # -------------------------------
@@ -169,9 +197,8 @@ class AntiLinks(commands.Cog):
 
         # 🎭 ROLE EXCEPTION
         allowed_roles = data.get("allowed_roles", [])
-        if allowed_roles:
-            if any(r.id in allowed_roles for r in message.author.roles):
-                return
+        if allowed_roles and any(r.id in allowed_roles for r in message.author.roles):
+            return
 
         # ❌ DELETE if message is ONLY a link
         if message.content.strip() == LINK_REGEX.search(message.content).group(0):
@@ -192,6 +219,13 @@ class AntiLinks(commands.Cog):
             except discord.Forbidden:
                 pass
 
+    # -------------------------------
+    # GLOBAL CHECK FOR SLASH COMMANDS
+    # -------------------------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
-async def setup(bot):
+
+# ----------------- SETUP -----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(AntiLinks(bot))

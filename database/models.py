@@ -57,3 +57,6 @@ audiodown_col.create_index("guild_id", unique=True)
 
 search_col = db["search_config"]
 search_col.create_index("guild_id", unique=True)
+
+autorenamer_col = db["auto_rename"]
+autorenamer_col.create_index("guild_id", unique=True)

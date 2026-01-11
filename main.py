@@ -77,7 +77,7 @@ async def main():
         await bot.load_extension("cogs.audiodownloader")
         await bot.load_extension("cogs.scheduled_embeds")
         await bot.load_extension("cogs.search")
-        await bot.load_extension("cogs.speak")
+        await bot.load_extension("cogs.autorenamer")
 
         # ================= RUN BOT =================
         await bot.start(TOKEN)

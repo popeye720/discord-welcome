@@ -10,12 +10,6 @@ class JoinToCreate(commands.Cog):
         self.temp_channels = {}  # vc_id : creator_id
         self._ready_done = False
 
-        # ✅ Automatically register slash commands for this cog
-        self.bot.tree.add_command(self.create_jtc)
-        self.bot.tree.add_command(self.delete_jtc)
-        self.bot.tree.add_command(self.vc_allow)
-        self.bot.tree.add_command(self.vc_remove)
-
     # ---------------- PERMISSION CHECK ----------------
     async def can_manage(self, interaction: discord.Interaction):
         guild = interaction.guild

@@ -48,7 +48,6 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # Use current channel if none provided
         if channel is None:
             channel = interaction.channel
 
@@ -69,7 +68,7 @@ class AudioDownloader(commands.Cog):
 
         msg = await channel.send(embed=embed)
 
-        # Save setup info in DB
+        # Save channel + setup message ID in DB
         audiodown_col.update_one(
             {"guild_id": guild.id},
             {"$set": {
@@ -104,7 +103,6 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # Channel restriction
         if interaction.channel.id != data["channel_id"]:
             if not await self.is_admin(interaction):
                 warn = await interaction.channel.send(
@@ -124,7 +122,6 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # INITIAL STATUS MESSAGE
         await interaction.response.send_message(
             f"🔍 **Checking audio size for {author.mention}**\n⏳ Please wait…"
         )
@@ -133,7 +130,6 @@ class AudioDownloader(commands.Cog):
         async with lock:
             downloaded_file = None
             try:
-                # ---------- INFO BEFORE DOWNLOAD ----------
                 info_opts = {
                     "format": "bestaudio",
                     "quiet": True,
@@ -146,7 +142,6 @@ class AudioDownloader(commands.Cog):
                     with yt_dlp.YoutubeDL(info_opts) as ydl:
                         info = ydl.extract_info(url, download=False)
 
-                # ---------- BLOCK PLAYLIST ----------
                 if "entries" in info:
                     return await status_msg.edit(
                         content=f"❌ {author.mention}, playlists are **not allowed**. Provide a single video URL."
@@ -167,7 +162,6 @@ class AudioDownloader(commands.Cog):
                         content=f"❌ File too large ({filesize / 1024 / 1024:.2f} MB). Discord limit is 7 MB."
                     )
 
-                # ---------- DOWNLOAD ----------
                 await status_msg.edit(
                     content=f"⬇️ **Downloading audio for {author.mention}**…"
                 )
@@ -190,14 +184,12 @@ class AudioDownloader(commands.Cog):
                 if not downloaded_file or not os.path.exists(downloaded_file):
                     return await status_msg.edit(content="❌ Download failed.")
 
-                # ---------- FINAL SIZE CHECK ----------
                 if os.path.getsize(downloaded_file) > MAX_SIZE:
                     os.remove(downloaded_file)
                     return await status_msg.edit(
                         content="❌ File exceeded 7 MB after download."
                     )
 
-                # ---------- UPLOAD ----------
                 await status_msg.edit(content="📤 Uploading audio…")
                 await interaction.channel.send(
                     content=f"✅ **Done!** {author.mention}, your audio is ready 👇",
@@ -213,7 +205,7 @@ class AudioDownloader(commands.Cog):
                 await status_msg.edit(content=f"❌ Failed: `{e}`")
 
     # -------------------------------
-    # DISABLE COMMAND
+    # DISABLE COMMAND (Hybrid for large bots)
     # -------------------------------
     @app_commands.command(name="disableaudiodown", description="Disable audio downloader")
     async def disableaudiodown(self, interaction: discord.Interaction):
@@ -230,28 +222,26 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
-        # ---------- DELETE SETUP MESSAGE IN ANY CHANNEL ----------
-        try:
-            for ch in interaction.guild.text_channels:
-                msg_id = data.get("setup_msg_id")
-                if msg_id:
-                    try:
-                        msg = await ch.fetch_message(msg_id)
-                        if msg:
-                            await msg.delete()
-                    except:
-                        continue
-        except:
-            pass
+        msg_id = data.get("setup_msg_id")
+        ch = interaction.guild.get_channel(data.get("channel_id"))
 
-        # ---------- DELETE FULL DB RECORD ----------
+        # Try to delete setup message if it exists
+        if msg_id and ch and isinstance(ch, discord.TextChannel):
+            try:
+                await asyncio.sleep(1)  # small delay to avoid rate limits
+                msg = await ch.fetch_message(msg_id)
+                if msg and ch.permissions_for(interaction.guild.me).manage_messages:
+                    await msg.delete()
+            except:
+                pass  # Fail silently if message missing/deleted
+
+        # Delete DB record
         audiodown_col.delete_one({"guild_id": interaction.guild.id})
 
         await interaction.response.send_message(
             "✅ Audio downloader disabled and setup removed from DB.",
             ephemeral=True
         )
-
 
 # ---------- COG SETUP ----------
 async def setup(bot: commands.Bot):

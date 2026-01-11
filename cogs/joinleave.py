@@ -35,17 +35,22 @@ class JoinLeave(commands.Cog):
                 ephemeral=True
             )
 
-        # 🔥 ACK immediately
         await interaction.response.defer(ephemeral=True)
 
         try:
-            if interaction.guild.voice_client:
-                await interaction.guild.voice_client.move_to(channel)
+            vc = interaction.guild.voice_client
+
+            if vc and vc.is_connected():
+                await vc.move_to(channel)
             else:
-                await channel.connect()
+                await channel.connect(
+                    reconnect=True,
+                    timeout=None,
+                    self_deaf=True
+                )
 
             await interaction.edit_original_response(
-                content=f"✅ Joined **{channel.name}**"
+                content=f"✅ Joined **{channel.name}** (Stable Mode)"
             )
 
         except Exception as e:
@@ -66,20 +71,19 @@ class JoinLeave(commands.Cog):
             )
 
         vc = interaction.guild.voice_client
-        if not vc:
+        if not vc or not vc.is_connected():
             return await interaction.response.send_message(
-                "❌ Bot is not connected to a voice channel.",
+                "❌ Bot is not connected to any VC.",
                 ephemeral=True
             )
 
-        # 🔥 ACK immediately
         await interaction.response.defer(ephemeral=True)
 
         try:
-            await vc.disconnect(force=True)  # ⚡ immediate leave
+            await vc.disconnect(force=False)
 
             await interaction.edit_original_response(
-                content="✅ Left the voice channel"
+                content="✅ Left the voice channel safely"
             )
 
         except Exception as e:

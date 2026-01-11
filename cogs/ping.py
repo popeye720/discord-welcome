@@ -5,13 +5,13 @@ import time
 
 
 class Ping(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -------- ADMIN / OWNER CHECK --------
-    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+    # ----------------- PERMISSION CHECK -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
         guild = interaction.guild
-        if guild is None:
+        if not guild:
             return False
         if interaction.user.id == guild.owner_id:
             return True
@@ -19,23 +19,19 @@ class Ping(commands.Cog):
             return True
         return False
 
-    # -------- PING COMMAND --------
-    @app_commands.command(name="ping", description="Check bot latency")
-    @app_commands.default_permissions(administrator=True)
+    # ----------------- PING SLASH COMMAND -----------------
+    @app_commands.command(name="ping", description="Check bot latency and status")
     async def ping(self, interaction: discord.Interaction):
+
         if not await self.is_admin_or_owner(interaction):
-            return await interaction.response.send_message(
-                "❌ Only server owner or admins can use this.",
-                ephemeral=True
-            )
+            return
 
         # Websocket latency
         ws_latency = round(self.bot.latency * 1000)
 
-        # Message latency
+        # Initial response (acts like ctx.send)
         start = time.perf_counter()
-        await interaction.response.send_message("🏓 Checking ping...")
-        msg = await interaction.original_response()
+        await interaction.response.send_message("🏓 Checking ping...", ephemeral=False)
         end = time.perf_counter()
 
         msg_latency = round((end - start) * 1000)
@@ -65,8 +61,17 @@ class Ping(commands.Cog):
 
         embed.set_footer(text="Bot is running smoothly 🚀")
 
-        await msg.edit(content=None, embed=embed)
+        # Edit original response (same as msg.edit)
+        await interaction.edit_original_response(
+            content=None,
+            embed=embed
+        )
+
+    # ----------------- GLOBAL CHECK (OPTIONAL BUT SAME STYLE) -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
 
-async def setup(bot):
+# ----------------- SETUP -----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(Ping(bot))

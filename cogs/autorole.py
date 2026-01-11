@@ -1,123 +1,141 @@
-from discord.ext import commands
 import discord
-
+from discord.ext import commands
+from discord import app_commands
 from database.models import autorole_col
+import asyncio
 
 
 class AutoRole(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -------- PERMISSION CHECK (ADMIN / OWNER) --------
-    def is_admin():
-        async def predicate(ctx):
-            return (
-                ctx.author.guild_permissions.administrator
-                or ctx.author.id == ctx.guild.owner_id
+    # ----------------- PERMISSION CHECK -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        if not guild:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
+
+    # ----------------- ADD AUTOROLE -----------------
+    @app_commands.command(name="autorole", description="Add an auto role")
+    async def autorole(self, interaction: discord.Interaction, role: discord.Role):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        if role >= interaction.guild.me.top_role:
+            return await interaction.response.send_message(
+                "❌ I can't assign this role.",
+                ephemeral=True
             )
-        return commands.check(predicate)
 
-    # -------- ADD AUTOROLE --------
-    @commands.command(name="autorole")
-    @is_admin()
-    async def autorole(self, ctx, role_id: int):
-        role = ctx.guild.get_role(role_id)
-        if not role:
-            return await ctx.reply("❌ Invalid role ID")
-
-        if role >= ctx.guild.me.top_role:
-            return await ctx.reply("❌ I can't assign this role.")
-
-        # ❌ prevent duplicate
+        # 🔒 DUPLICATE CHECK
         existing = autorole_col.find_one({
-            "guild_id": ctx.guild.id,
-            "role_id": role_id
+            "guild_id": interaction.guild.id,
+            "role_id": role.id
         })
         if existing:
-            return await ctx.reply("⚠️ This autorole already exists.")
+            return await interaction.response.send_message(
+                "⚠️ This autorole already exists.",
+                ephemeral=True
+            )
 
         autorole_col.insert_one({
-            "guild_id": ctx.guild.id,
-            "role_id": role_id
+            "guild_id": interaction.guild.id,
+            "role_id": role.id
         })
 
-        await ctx.reply(f"✅ Auto role **{role.name}** added.")
+        await interaction.response.send_message(
+            f"✅ Auto role **{role.name}** added.",
+            ephemeral=True
+        )
 
-    # -------- CANCEL AUTOROLE --------
-    @commands.command(name="autorolecancel")
-    @is_admin()
-    async def autorole_cancel(self, ctx, role_id: int = None):
-        if role_id:
+    # ----------------- CANCEL AUTOROLE -----------------
+    @app_commands.command(name="autorolecancel", description="Remove an auto role")
+    async def autorole_cancel(self, interaction: discord.Interaction, role: discord.Role = None):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        if role:
             result = autorole_col.find_one_and_delete({
-                "guild_id": ctx.guild.id,
-                "role_id": role_id
+                "guild_id": interaction.guild.id,
+                "role_id": role.id
             })
 
             if not result:
-                return await ctx.reply("❌ This autorole does not exist.")
+                return await interaction.response.send_message(
+                    "❌ This autorole does not exist.",
+                    ephemeral=True
+                )
 
-            role = ctx.guild.get_role(role_id)
-            name = role.name if role else str(role_id)
+            await interaction.response.send_message(
+                f"✅ Autorole **{role.name}** removed.",
+                ephemeral=True
+            )
+            return
 
-            return await ctx.reply(f"✅ Autorole **{name}** removed.")
-
-        # 🔥 no role_id → delete all
-        result = autorole_col.delete_many({
-            "guild_id": ctx.guild.id
-        })
-
+        # 🔥 No role → delete all
+        result = autorole_col.delete_many({"guild_id": interaction.guild.id})
         if result.deleted_count == 0:
-            return await ctx.reply("❌ No autoroles are set.")
+            return await interaction.response.send_message(
+                "❌ No autoroles are set.",
+                ephemeral=True
+            )
 
-        await ctx.reply("✅ All autoroles removed.")
-
-    # -------- LIST AUTOROLES --------
-    @commands.command(name="autorolelist")
-    @is_admin()
-    async def autorole_list(self, ctx):
-        roles = autorole_col.find(
-            {"guild_id": ctx.guild.id}
+        await interaction.response.send_message(
+            "✅ All autoroles removed.",
+            ephemeral=True
         )
 
+    # ----------------- LIST AUTOROLES -----------------
+    @app_commands.command(name="autorolelist", description="List all auto roles")
+    async def autorole_list(self, interaction: discord.Interaction):
+        roles_data = autorole_col.find({"guild_id": interaction.guild.id})
+
         role_mentions = []
-        for r in roles:
-            role = ctx.guild.get_role(r["role_id"])
+        for r in roles_data:
+            role = interaction.guild.get_role(r["role_id"])
             if role:
                 role_mentions.append(role.mention)
 
         if not role_mentions:
-            return await ctx.reply("❌ No autoroles set.")
-
-        text = "\n".join(role_mentions)
+            return await interaction.response.send_message(
+                "❌ No autoroles set.",
+                ephemeral=True
+            )
 
         embed = discord.Embed(
             title="Auto Roles",
-            description=text,
+            description="\n".join(role_mentions),
             color=discord.Color.blurple()
         )
 
-        await ctx.reply(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # -------- GIVE AUTOROLES ON JOIN --------
+    # ----------------- GIVE AUTOROLES ON JOIN -----------------
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        roles = autorole_col.find({
-            "guild_id": member.guild.id
-        })
+        roles_data = autorole_col.find({"guild_id": member.guild.id})
 
-        for r in roles:
+        for r in roles_data:
             role = member.guild.get_role(r["role_id"])
             if not role:
                 continue
-
             if role >= member.guild.me.top_role:
                 continue
-
             try:
                 await member.add_roles(role, reason="Auto Role")
             except (discord.Forbidden, discord.HTTPException):
                 continue
 
+    # ----------------- GLOBAL CHECK -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
-async def setup(bot):
+
+# ----------------- SETUP -----------------
+async def setup(bot: commands.Bot):
     await bot.add_cog(AutoRole(bot))

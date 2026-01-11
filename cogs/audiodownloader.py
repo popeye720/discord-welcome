@@ -36,11 +36,11 @@ class AudioDownloader(commands.Cog):
     # SETUP COMMAND
     # -------------------------------
     @app_commands.command(name="audiodownsetup", description="Setup audio downloader")
-    @app_commands.describe(channel="Text channel where audio downloader works")
+    @app_commands.describe(channel="Optional text channel where audio downloader works")
     async def audiodownsetup(
         self,
         interaction: discord.Interaction,
-        channel: discord.TextChannel
+        channel: discord.TextChannel = None
     ):
         if not await self.is_admin(interaction):
             return await interaction.response.send_message(
@@ -48,10 +48,14 @@ class AudioDownloader(commands.Cog):
                 ephemeral=True
             )
 
+        # Use current channel if none provided
+        if channel is None:
+            channel = interaction.channel
+
         guild = interaction.guild
         data = audiodown_col.find_one({"guild_id": guild.id})
 
-        if data and data.get("enabled"):
+        if data:
             return await interaction.response.send_message(
                 "⚠️ Audio downloader already set up.",
                 ephemeral=True
@@ -59,19 +63,18 @@ class AudioDownloader(commands.Cog):
 
         embed = Embed(
             title="🎵 YouTube Audio Downloader",
-            description="Use `/audiodown <Youtube/instagram URL>` in this channel.",
+            description="Use `/audiodown <YouTube/Instagram URL>` in this channel.",
             color=discord.Color.green()
         )
 
         msg = await channel.send(embed=embed)
 
-        # Save setup message ID in DB
+        # Save setup info in DB
         audiodown_col.update_one(
             {"guild_id": guild.id},
             {"$set": {
                 "channel_id": channel.id,
-                "setup_msg_id": msg.id,
-                "enabled": True
+                "setup_msg_id": msg.id
             }},
             upsert=True
         )
@@ -84,8 +87,8 @@ class AudioDownloader(commands.Cog):
     # -------------------------------
     # DOWNLOAD COMMAND
     # -------------------------------
-    @app_commands.command(name="audiodown", description="Download YouTube/instagram audio")
-    @app_commands.describe(url="YouTube/instagram video URL to download audio from")
+    @app_commands.command(name="audiodown", description="Download YouTube/Instagram audio")
+    @app_commands.describe(url="YouTube/Instagram video URL")
     async def audiodown(
         self,
         interaction: discord.Interaction,
@@ -95,7 +98,7 @@ class AudioDownloader(commands.Cog):
         author = interaction.user
 
         data = audiodown_col.find_one({"guild_id": guild.id})
-        if not data or not data.get("enabled"):
+        if not data:
             return await interaction.response.send_message(
                 "⚠️ Audio downloader is not set up.",
                 ephemeral=True
@@ -123,19 +126,18 @@ class AudioDownloader(commands.Cog):
 
         # INITIAL STATUS MESSAGE
         await interaction.response.send_message(
-            f"🔍 **Checking audio size for {author.mention}**\n"
-            "⏳ Please wait… do not delete this message"
+            f"🔍 **Checking audio size for {author.mention}**\n⏳ Please wait…"
         )
         status_msg = await interaction.original_response()
 
         async with lock:
             downloaded_file = None
             try:
-                # ---------- SIZE CHECK BEFORE DOWNLOAD ----------
+                # ---------- INFO BEFORE DOWNLOAD ----------
                 info_opts = {
                     "format": "bestaudio",
                     "quiet": True,
-                    "noplaylist": True,  # safety
+                    "noplaylist": True,
                     "no_warnings": True,
                     "logger": None
                 }
@@ -147,7 +149,7 @@ class AudioDownloader(commands.Cog):
                 # ---------- BLOCK PLAYLIST ----------
                 if "entries" in info:
                     return await status_msg.edit(
-                        content=f"❌ {author.mention}, playlists are **not allowed**. Please provide a single video URL."
+                        content=f"❌ {author.mention}, playlists are **not allowed**. Provide a single video URL."
                     )
 
                 if info.get("is_live"):
@@ -160,19 +162,14 @@ class AudioDownloader(commands.Cog):
                     or info.get("filesize_approx")
                     or info.get("filesize_estimate")
                 )
-
                 if filesize and filesize > MAX_SIZE:
                     return await status_msg.edit(
-                        content=(
-                            "❌ **File too large**\n"
-                            f"Estimated size: `{filesize / 1024 / 1024:.2f} MB`\n"
-                            "Discord limit is **7 MB**"
-                        )
+                        content=f"❌ File too large ({filesize / 1024 / 1024:.2f} MB). Discord limit is 7 MB."
                     )
 
-                # ---------- DOWNLOADING ----------
+                # ---------- DOWNLOAD ----------
                 await status_msg.edit(
-                    content=f"⬇️ **Downloading audio for {author.mention}**\n⏳ Please wait…"
+                    content=f"⬇️ **Downloading audio for {author.mention}**…"
                 )
 
                 ydl_opts = {
@@ -197,22 +194,18 @@ class AudioDownloader(commands.Cog):
                 if os.path.getsize(downloaded_file) > MAX_SIZE:
                     os.remove(downloaded_file)
                     return await status_msg.edit(
-                        content="❌ File exceeded **7 MB** after download."
+                        content="❌ File exceeded 7 MB after download."
                     )
 
                 # ---------- UPLOAD ----------
-                await status_msg.edit(content="📤 Uploading audio to Discord…")
-
+                await status_msg.edit(content="📤 Uploading audio…")
                 await interaction.channel.send(
                     content=f"✅ **Done!** {author.mention}, your audio is ready 👇",
                     file=discord.File(downloaded_file)
                 )
 
                 os.remove(downloaded_file)
-
-                await status_msg.edit(
-                    content=f"✅ **Completed successfully** for {author.mention}"
-                )
+                await status_msg.edit(content=f"✅ Completed successfully for {author.mention}")
 
             except Exception as e:
                 if downloaded_file and os.path.exists(downloaded_file):
@@ -231,35 +224,35 @@ class AudioDownloader(commands.Cog):
             )
 
         data = audiodown_col.find_one({"guild_id": interaction.guild.id})
-        if not data or not data.get("enabled"):
+        if not data:
             return await interaction.response.send_message(
                 "⚠️ Audio downloader is not enabled.",
                 ephemeral=True
             )
 
-        # ---------- DELETE SETUP MESSAGE ----------
+        # ---------- DELETE SETUP MESSAGE IN ANY CHANNEL ----------
         try:
-            channel = interaction.guild.get_channel(data["channel_id"])
-            msg_id = data.get("setup_msg_id")
-            if channel and msg_id:
-                msg = await channel.fetch_message(msg_id)
-                if msg:
-                    await msg.delete()
+            for ch in interaction.guild.text_channels:
+                msg_id = data.get("setup_msg_id")
+                if msg_id:
+                    try:
+                        msg = await ch.fetch_message(msg_id)
+                        if msg:
+                            await msg.delete()
+                    except:
+                        continue
         except:
-            pass  # ignore if already deleted
+            pass
 
-        audiodown_col.update_one(
-            {"guild_id": interaction.guild.id},
-            {"$set": {"enabled": False}}
-        )
+        # ---------- DELETE FULL DB RECORD ----------
+        audiodown_col.delete_one({"guild_id": interaction.guild.id})
 
         await interaction.response.send_message(
-            "✅ Audio downloader disabled.",
+            "✅ Audio downloader disabled and setup removed from DB.",
             ephemeral=True
         )
 
 
 # ---------- COG SETUP ----------
 async def setup(bot: commands.Bot):
-    
     await bot.add_cog(AudioDownloader(bot))

@@ -236,19 +236,28 @@ class FreeGames(commands.Cog):
             if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
                 continue
 
-            # Get proper URL
-            url_slug = game.get("urlSlug")  # preferred
-            if not url_slug:
-                continue
+            # ===== UPDATED LINK LOGIC =====
+            claim_url = None
+            mappings = game.get("catalogNs", {}).get("mappings", [])
+            for m in mappings:
+                slug = m.get("pageSlug")
+                if slug:
+                    claim_url = f"https://www.epicgames.com/store/p/{slug}"
+                    break
+            if not claim_url:
+                url_slug = game.get("urlSlug")
+                if url_slug:
+                    claim_url = f"https://www.epicgames.com/store/p/{url_slug}"
 
-            full_url = f"https://store.epicgames.com/en-US/p/{url_slug}"
+            if not claim_url:
+                continue  # skip if no working URL
 
             games.append({
                 "id": game["id"],
                 "title": game["title"],
                 "platform": "Epic Games",
                 "free_till": end.split("T")[0],
-                "url": full_url
+                "url": claim_url
             })
 
         return games

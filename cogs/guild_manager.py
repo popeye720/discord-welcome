@@ -138,33 +138,36 @@ class GuildManager(commands.Cog):
 
     # /blacklist <guild_id>
     @app_commands.command(name="blacklist", description="Blacklist a server and leave it")
-    async def blacklist(self, interaction: discord.Interaction, guild_id: int):
+    async def blacklist(self, interaction: discord.Interaction, guild_id: str):
         if not await self.is_owner(interaction):
             return
-        guilds_col.update_one({"guild_id": guild_id}, {"$set": {"blacklisted": True}}, upsert=True)
-        guild = self.bot.get_guild(guild_id)
+        guild_id_int = int(guild_id)  # Convert string to int safely
+        guilds_col.update_one({"guild_id": guild_id_int}, {"$set": {"blacklisted": True}}, upsert=True)
+        guild = self.bot.get_guild(guild_id_int)
         if guild:
             await guild.leave()
-        await interaction.response.send_message(f"🚫 Server `{guild_id}` blacklisted & bot left.", ephemeral=True)
+        await interaction.response.send_message(f"🚫 Server `{guild_id_int}` blacklisted & bot left.", ephemeral=True)
 
     # /unblacklist <guild_id>
     @app_commands.command(name="unblacklist", description="Remove server from blacklist")
-    async def unblacklist(self, interaction: discord.Interaction, guild_id: int):
+    async def unblacklist(self, interaction: discord.Interaction, guild_id: str):
         if not await self.is_owner(interaction):
             return
-        guilds_col.update_one({"guild_id": guild_id}, {"$set": {"blacklisted": False}}, upsert=True)
-        await interaction.response.send_message(f"✅ Server `{guild_id}` unblacklisted.", ephemeral=True)
+        guild_id_int = int(guild_id)
+        guilds_col.update_one({"guild_id": guild_id_int}, {"$set": {"blacklisted": False}}, upsert=True)
+        await interaction.response.send_message(f"✅ Server `{guild_id_int}` unblacklisted.", ephemeral=True)
 
     # /leave <guild_id>
     @app_commands.command(name="leave", description="Bot leaves a specific guild")
-    async def leave(self, interaction: discord.Interaction, guild_id: int):
+    async def leave(self, interaction: discord.Interaction, guild_id: str):
         if not await self.is_owner(interaction):
             return
-        guild = self.bot.get_guild(guild_id)
+        guild_id_int = int(guild_id)
+        guild = self.bot.get_guild(guild_id_int)
         if not guild:
             return await interaction.response.send_message("❌ Bot is not in this server.", ephemeral=True)
         await guild.leave()
-        guilds_col.delete_one({"guild_id": guild_id})
+        guilds_col.delete_one({"guild_id": guild_id_int})
         await interaction.response.send_message(f"✅ Bot left `{guild.name}` server.", ephemeral=True)
 
     # ----------------- GLOBAL CHECK -----------------

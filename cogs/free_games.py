@@ -176,48 +176,52 @@ class FreeGames(commands.Cog):
             self.collection.update_one({"guild_id": guild.id}, {"$set": {"last_posted": posted}})
 
     # =============================== DATA FETCHERS ===============================
-    async def fetch_epic_games(self):
-        url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
-        games = []
+async def fetch_epic_games(self):
+    url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
+    games = []
 
-        try:
-            async with self.session.get(url, timeout=15) as resp:
-                data = await resp.json()
-        except Exception as e:
-            print("Epic error:", e)
-            return games
-
-        elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
-        for game in elements:
-            promotions = game.get("promotions")
-            if not promotions:
-                continue
-
-            offers = promotions.get("promotionalOffers", [])
-            if not offers:
-                continue
-
-            offer = offers[0]["promotionalOffers"][0]
-            end = offer.get("endDate")
-            if not end:
-                continue
-
-            if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
-                continue
-
-            slug = game.get("productSlug") or game.get("urlSlug")
-            if not slug:
-                continue
-
-            games.append({
-                "id": game["id"],
-                "title": game["title"],
-                "platform": "Epic Games",
-                "free_till": end.split("T")[0],
-                "url": f"https://store.epicgames.com/p/{slug}"
-            })
-
+    try:
+        async with self.session.get(url, timeout=15) as resp:
+            data = await resp.json()
+    except Exception as e:
+        print("Epic error:", e)
         return games
+
+    elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
+    for game in elements:
+        promotions = game.get("promotions")
+        if not promotions:
+            continue
+
+        offers = promotions.get("promotionalOffers", [])
+        if not offers:
+            continue
+
+        offer = offers[0]["promotionalOffers"][0]
+        end = offer.get("endDate")
+        if not end:
+            continue
+
+        if datetime.utcnow() > datetime.fromisoformat(end.replace("Z", "")):
+            continue
+
+        # Get proper URL
+        url_slug = game.get("urlSlug")  # preferred
+        if not url_slug:
+            continue
+
+        # Include locale in URL
+        full_url = f"https://store.epicgames.com/en-US/p/{url_slug}"
+
+        games.append({
+            "id": game["id"],
+            "title": game["title"],
+            "platform": "Epic Games",
+            "free_till": end.split("T")[0],
+            "url": full_url
+        })
+
+    return games
 
 # =============================== SETUP ===============================
 async def setup(bot: commands.Bot):

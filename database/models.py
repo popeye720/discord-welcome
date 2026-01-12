@@ -7,7 +7,7 @@ reactionrole_col = db["reaction_roles"]
 autotrigger_col = db["auto_triggers"]
 greetings_col = db["greetings"] 
 autorole_col = db["auto_roles"]
-guilds_col = db["guilds"]
+
 freegames_col = db["free_games"]
 
 ytnotify_col = db["ytnotify"]
@@ -63,3 +63,11 @@ autorenamer_col.create_index("guild_id", unique=True)
 
 privatevc_col = db["private_vc"]
 privatevc_col.create_index("guild_id", unique=True)
+
+
+guilds_col = db["guilds"]
+guilds_col.create_index("guild_id", unique=True)
+
+
+blacklisted_guilds_col = db["blacklisted_guilds"]
+blacklisted_guilds_col.create_index("guild_id", unique=True)

@@ -28,6 +28,16 @@ class PrivateVC(commands.Cog):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
 
+        existing = privatevc_col.find_one({"guild_id": interaction.guild.id})
+
+        # ❌ BLOCK RE-SETUP
+        if existing and existing.get("enabled"):
+            return await interaction.response.send_message(
+                "❌ Private VC system is already enabled.\n"
+                "👉 Please disable it first using `/privatevcdisable` and then run setup again.",
+                ephemeral=True
+            )
+
         privatevc_col.update_one(
             {"guild_id": interaction.guild.id},
             {
@@ -57,7 +67,8 @@ class PrivateVC(commands.Cog):
         privatevc_col.delete_one({"guild_id": interaction.guild.id})
 
         await interaction.response.send_message(
-            "🛑 Private VC system disabled & all data cleared.",
+            "🛑 Private VC system disabled & all data cleared.\n"
+            "You can now run `/privatevcsetup` again.",
             ephemeral=True
         )
 

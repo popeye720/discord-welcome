@@ -183,7 +183,11 @@ class Forms(commands.Cog):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)
         await interaction.response.send_modal(AdminFormModal())
 
-    @app_commands.command(name="closeform", description="Close the active form")
+    @app_commands.command(
+        name="closeform",
+        description="Close the active form. `delete_all: True` deletes all stored responses. False keeps them."
+    )
+    @app_commands.describe(delete_all="True = Delete all responses, False = Keep them")
     async def closeform(self, interaction: discord.Interaction, delete_all: bool = False):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)
@@ -211,7 +215,7 @@ class Forms(commands.Cog):
 
         await interaction.response.send_message("🗑️ Form closed. Responses kept.", ephemeral=True)
 
-    @app_commands.command(name="formresponses", description="View form responses")
+    @app_commands.command(name="formresponses", description="View all form responses (one embed per user)")
     async def formresponses(self, interaction: discord.Interaction):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)
@@ -220,16 +224,15 @@ class Forms(commands.Cog):
         if not responses:
             return await interaction.response.send_message("❌ No responses found.", ephemeral=True)
 
-        embeds = []
+        # Send **all responses**, one embed per user
         for r in responses:
             user = interaction.guild.get_member(r["user_id"])
             name = user.mention if user else f"<@{r['user_id']}>"
             desc = ""
             for q, a in r["answers"].items():
                 desc += f"**{q}**\n> {a}\n\n"
-            embeds.append(discord.Embed(title=f"📄 Response – {name}", description=desc, color=discord.Color.blurple()))
-
-        await interaction.response.send_message(embed=embeds[0] if embeds else None, ephemeral=True)
+            embed = discord.Embed(title=f"📄 Response – {name}", description=desc, color=discord.Color.blurple())
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ================= SETUP =================
 async def setup(bot: commands.Bot):

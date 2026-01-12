@@ -42,8 +42,8 @@ class PrivateVC(commands.Cog):
             ephemeral=True
         )
 
-    # ================== /privatevc ==================
-    @app_commands.command(name="privatevc")
+    # ================== /privatevccreate ==================
+    @app_commands.command(name="privatevccreate")
     async def privatevc(self, interaction: discord.Interaction):
         guild = interaction.guild
         user = interaction.user
@@ -131,41 +131,6 @@ class PrivateVC(commands.Cog):
             await vc.set_permissions(user, view_channel=False, connect=False)
 
         await interaction.response.send_message("🚫 User removed.", ephemeral=True)
-
-    # ================== /privatevcdelete ==================
-    @app_commands.command(name="privatevcdelete")
-    async def privatevcdelete(self, interaction: discord.Interaction):
-        data = privatevc_col.find_one({"guild_id": interaction.guild.id})
-
-        # CREATOR DELETE
-        vc_data = data.get("active_vcs", {}).get(str(interaction.user.id))
-        if vc_data:
-            vc = interaction.guild.get_channel(vc_data["channel_id"])
-            if vc:
-                for m in vc.members:
-                    await m.move_to(None)
-                await vc.delete()
-
-            privatevc_col.update_one(
-                {"guild_id": interaction.guild.id},
-                {"$unset": {f"active_vcs.{interaction.user.id}": ""}}
-            )
-
-            return await interaction.response.send_message("🗑️ Your VC deleted.", ephemeral=True)
-
-        # ADMIN FULL SHUTDOWN
-        if interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id:
-            for vc_data in data.get("active_vcs", {}).values():
-                vc = interaction.guild.get_channel(vc_data["channel_id"])
-                if vc:
-                    for m in vc.members:
-                        await m.move_to(None)
-                    await vc.delete()
-
-            privatevc_col.delete_one({"guild_id": interaction.guild.id})
-            return await interaction.response.send_message("🛑 System disabled.", ephemeral=True)
-
-        await interaction.response.send_message("❌ Not allowed.", ephemeral=True)
 
     # ================== AUTO DELETE IF OWNER LEAVES ==================
     @commands.Cog.listener()

@@ -171,4 +171,3 @@ class ChannelManager(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(ChannelManager(bot))
-    bot.tree.add_command(ChannelManager.channel)

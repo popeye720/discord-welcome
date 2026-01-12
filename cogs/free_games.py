@@ -108,14 +108,40 @@ class FreeGames(commands.Cog):
                 "❌ Only **Server Owner or Admin** can use this command.", ephemeral=True
             )
 
-        # ✅ Send initial ephemeral response
+        # Send initial ephemeral response
         await interaction.response.send_message("🔄 Free games check started...", ephemeral=True)
 
-        # ✅ Run free games in background so it doesn't block interaction token
-        asyncio.create_task(self.run_free_games())
+        async def run_force_check():
+            configs = list(self.collection.find({"enabled": True}))
+            total_posted = 0
 
-        # Optionally, send followup after a short delay (not guaranteed if too many games)
-        # await interaction.followup.send("✅ Free games check completed.", ephemeral=True)
+            for config in configs:
+                guild = self.bot.get_guild(config["guild_id"])
+                if not guild:
+                    continue
+                channel = guild.get_channel(config["channel_id"])
+                if not channel:
+                    continue
+
+                role_mention = ""
+                if config.get("role_id"):
+                    role = guild.get_role(config["role_id"])
+                    if role:
+                        role_mention = role.mention
+
+                posted_before = len(config.get("last_posted", []))
+                await self.run_free_games()  # Run the main logic
+                config_after = self.collection.find_one({"guild_id": config["guild_id"]})
+                posted_after = len(config_after.get("last_posted", []))
+                total_posted += max(0, posted_after - posted_before)
+
+            await interaction.followup.send(
+                f"✅ Free games check completed. {total_posted} new game(s) posted.",
+                ephemeral=True
+            )
+
+        # Run the force check as a background task
+        asyncio.create_task(run_force_check())
 
     # =============================== BACKGROUND TASK ===============================
     @tasks.loop(hours=12)
@@ -215,7 +241,6 @@ class FreeGames(commands.Cog):
             if not url_slug:
                 continue
 
-            # Include locale in URL
             full_url = f"https://store.epicgames.com/en-US/p/{url_slug}"
 
             games.append({

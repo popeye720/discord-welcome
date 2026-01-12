@@ -60,3 +60,6 @@ search_col.create_index("guild_id", unique=True)
 
 autorenamer_col = db["auto_rename"]
 autorenamer_col.create_index("guild_id", unique=True)
+
+privatevc_col = db["private_vc"]
+privatevc_col.create_index("guild_id", unique=True)

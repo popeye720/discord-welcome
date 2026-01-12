@@ -1,31 +1,26 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import aiohttp
 from datetime import datetime
 from database.models import freegames_col
 import asyncio
 import time
 
-
 CLEANUP_AFTER_SECONDS = 60 * 60 * 48  # 2 DAYS
 
-
+# ================= COG =================
 class FreeGames(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.collection = freegames_col
-
         try:
             self.collection.create_index("guild_id", unique=True)
         except Exception as e:
             print("Index error:", e)
-
         self.session: aiohttp.ClientSession | None = None
 
-    # ===============================
-    # COG LOAD / UNLOAD
-    # ===============================
-
+    # =============================== COG LOAD/UNLOAD ===============================
     async def cog_load(self):
         self.check_free_games.start()
         print("✅ FreeGames cog loaded")
@@ -36,33 +31,45 @@ class FreeGames(commands.Cog):
             await self.session.close()
         print("❌ FreeGames cog unloaded")
 
-    # ===============================
-    # ADMIN COMMANDS
-    # ===============================
+    # =============================== ADMIN CHECK ===============================
+    def can_manage(self, interaction: discord.Interaction) -> bool:
+        return (
+            interaction.guild
+            and (
+                interaction.user.id == interaction.guild.owner_id
+                or interaction.user.guild_permissions.administrator
+            )
+        )
 
-    @commands.command(name="freegames")
-    @commands.has_guild_permissions(administrator=True)
-    async def set_free_games(self, ctx, channel_id: int, role_id: int = None):
+    # =============================== SLASH COMMANDS ===============================
+    @app_commands.command(
+        name="freegames_enable",
+        description="Enable free games alerts in a channel"
+    )
+    @app_commands.describe(
+        channel="Channel to post free games",
+        role="Optional role to mention"
+    )
+    async def freegames_enable(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        role: discord.Role | None = None
+    ):
+        if not self.can_manage(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Server Owner or Admin** can use this command.", ephemeral=True
+            )
 
-        channel = ctx.guild.get_channel(channel_id)
-        if not channel:
-            return await ctx.send("❌ Invalid channel ID.")
-
-        role = None
-        if role_id:
-            role = ctx.guild.get_role(role_id)
-            if not role:
-                return await ctx.send("❌ Invalid role ID.")
-
-        if self.collection.find_one({"guild_id": ctx.guild.id}):
-            return await ctx.send(
-                "❌ Free games already enabled.\nUse `!removefg` first."
+        if self.collection.find_one({"guild_id": interaction.guild.id}):
+            return await interaction.response.send_message(
+                "❌ Free games already enabled. Use `/freegames_disable` first.", ephemeral=True
             )
 
         self.collection.insert_one({
-            "guild_id": ctx.guild.id,
-            "channel_id": channel_id,
-            "role_id": role_id,
+            "guild_id": interaction.guild.id,
+            "channel_id": channel.id,
+            "role_id": role.id if role else None,
             "enabled": True,
             "last_posted": []
         })
@@ -71,30 +78,41 @@ class FreeGames(commands.Cog):
         if role:
             msg += f" with role ping {role.mention}"
 
-        await ctx.send(msg)
+        await interaction.response.send_message(msg, ephemeral=True)
 
-    @commands.command(name="removefg")
-    @commands.has_guild_permissions(administrator=True)
-    async def remove_free_games(self, ctx):
+    @app_commands.command(
+        name="freegames_disable",
+        description="Disable free games alerts"
+    )
+    async def freegames_disable(self, interaction: discord.Interaction):
+        if not self.can_manage(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Server Owner or Admin** can use this command.", ephemeral=True
+            )
 
-        result = self.collection.delete_one({"guild_id": ctx.guild.id})
+        result = self.collection.delete_one({"guild_id": interaction.guild.id})
         if result.deleted_count == 0:
-            return await ctx.send("❌ Free games not enabled.")
+            return await interaction.response.send_message(
+                "❌ Free games not enabled.", ephemeral=True
+            )
 
-        await ctx.send("✅ Free games updates disabled.")
+        await interaction.response.send_message("✅ Free games updates disabled.", ephemeral=True)
 
-    # 🔥 FORCE COMMAND
-    @commands.command(name="forcefreegames")
-    @commands.has_guild_permissions(administrator=True)
-    async def force_free_games(self, ctx):
-        await ctx.send("🔄 Forcing free games check...")
+    @app_commands.command(
+        name="freegames_force",
+        description="Force a free games check now"
+    )
+    async def freegames_force(self, interaction: discord.Interaction):
+        if not self.can_manage(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Server Owner or Admin** can use this command.", ephemeral=True
+            )
+
+        await interaction.response.send_message("🔄 Forcing free games check...", ephemeral=True)
         await self.run_free_games()
-        await ctx.send("✅ Free games check completed.")
+        await interaction.followup.send("✅ Free games check completed.", ephemeral=True)
 
-    # ===============================
-    # BACKGROUND TASK
-    # ===============================
-
+    # =============================== BACKGROUND TASK ===============================
     @tasks.loop(hours=12)
     async def check_free_games(self):
         await self.run_free_games()
@@ -103,10 +121,7 @@ class FreeGames(commands.Cog):
     async def before_free_games(self):
         await self.bot.wait_until_ready()
 
-    # ===============================
-    # CORE LOGIC (REUSED)
-    # ===============================
-
+    # =============================== CORE LOGIC ===============================
     async def run_free_games(self):
         if not self.session or self.session.closed:
             self.session = aiohttp.ClientSession()
@@ -116,9 +131,6 @@ class FreeGames(commands.Cog):
             return
 
         epic_games = await self.fetch_epic_games()
-        steam_games = await self.fetch_steam_games()
-        all_games = epic_games + steam_games
-
         now = time.time()
 
         for config in configs:
@@ -137,60 +149,33 @@ class FreeGames(commands.Cog):
                     role_mention = role.mention
 
             posted = config.get("last_posted", [])
-
-            # 🧹 CLEAN OLD ENTRIES (2 DAYS)
-            posted = [
-                p for p in posted
-                if isinstance(p, dict) and now - p["ts"] < CLEANUP_AFTER_SECONDS
-            ]
-
+            # Clean old entries
+            posted = [p for p in posted if isinstance(p, dict) and now - p["ts"] < CLEANUP_AFTER_SECONDS]
             posted_ids = {p["id"] for p in posted}
 
-            for game in all_games:
+            for game in epic_games:
                 if game["id"] in posted_ids:
                     continue
 
-                embed = discord.Embed(
-                    title="🎮 FREE GAME ALERT",
-                    color=0x00FFCC
-                )
+                embed = discord.Embed(title="🎮 FREE GAME ALERT", color=0x00FFCC)
                 embed.add_field(name="Game", value=game["title"], inline=False)
                 embed.add_field(name="Platform", value=game["platform"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)
 
                 view = discord.ui.View()
-                view.add_item(
-                    discord.ui.Button(
-                        label="Claim Now",
-                        style=discord.ButtonStyle.link,
-                        url=game["url"]
-                    )
-                )
+                view.add_item(discord.ui.Button(label="Claim Now", style=discord.ButtonStyle.link, url=game["url"]))
 
                 try:
-                    await channel.send(
-                        content=role_mention or None,
-                        embed=embed,
-                        view=view
-                    )
+                    await channel.send(content=role_mention or None, embed=embed, view=view)
                     await asyncio.sleep(1)
                 except discord.Forbidden:
                     continue
 
-                posted.append({
-                    "id": game["id"],
-                    "ts": now
-                })
+                posted.append({"id": game["id"], "ts": now})
 
-            self.collection.update_one(
-                {"guild_id": guild.id},
-                {"$set": {"last_posted": posted}}
-            )
+            self.collection.update_one({"guild_id": guild.id}, {"$set": {"last_posted": posted}})
 
-    # ===============================
-    # DATA FETCHERS
-    # ===============================
-
+    # =============================== DATA FETCHERS ===============================
     async def fetch_epic_games(self):
         url = "https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions"
         games = []
@@ -202,13 +187,7 @@ class FreeGames(commands.Cog):
             print("Epic error:", e)
             return games
 
-        elements = (
-            data.get("data", {})
-            .get("Catalog", {})
-            .get("searchStore", {})
-            .get("elements", [])
-        )
-
+        elements = data.get("data", {}).get("Catalog", {}).get("searchStore", {}).get("elements", [])
         for game in elements:
             promotions = game.get("promotions")
             if not promotions:
@@ -240,34 +219,6 @@ class FreeGames(commands.Cog):
 
         return games
 
-    async def fetch_steam_games(self):
-        url = "https://store.steampowered.com/api/featuredcategories"
-        games = []
-
-        try:
-            async with self.session.get(url, timeout=15) as resp:
-                data = await resp.json()
-        except Exception as e:
-            print("Steam error:", e)
-            return games
-
-        for item in data.get("specials", {}).get("items", []):
-            if item.get("discount_percent") != 100:
-                continue
-
-            if not item.get("is_free"):
-                continue
-
-            games.append({
-                "id": str(item["id"]),
-                "title": item["name"],
-                "platform": "Steam",
-                "free_till": "Limited Time",
-                "url": f"https://store.steampowered.com/app/{item['id']}"
-            })
-
-        return games
-
-
-async def setup(bot):
+# =============================== SETUP ===============================
+async def setup(bot: commands.Bot):
     await bot.add_cog(FreeGames(bot))

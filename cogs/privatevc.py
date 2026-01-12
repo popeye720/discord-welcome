@@ -20,7 +20,10 @@ class PrivateVC(commands.Cog):
         return False
 
     # ================== /privatevcsetup ==================
-    @app_commands.command(name="privatevcsetup")
+    @app_commands.command(
+        name="privatevcsetup",
+        description="Enable private voice channel system and set allowed role"
+    )
     async def privatevcsetup(self, interaction: discord.Interaction, role: discord.Role):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
@@ -42,8 +45,27 @@ class PrivateVC(commands.Cog):
             ephemeral=True
         )
 
+    # ================== /privatevcdisable ==================
+    @app_commands.command(
+        name="privatevcdisable",
+        description="Disable private VC system and clear all stored data"
+    )
+    async def privatevcdisable(self, interaction: discord.Interaction):
+        if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
+            return await interaction.response.send_message("❌ Admin only.", ephemeral=True)
+
+        privatevc_col.delete_one({"guild_id": interaction.guild.id})
+
+        await interaction.response.send_message(
+            "🛑 Private VC system disabled & all data cleared.",
+            ephemeral=True
+        )
+
     # ================== /privatevccreate ==================
-    @app_commands.command(name="privatevccreate")
+    @app_commands.command(
+        name="privatevccreate",
+        description="Create your own private voice channel"
+    )
     async def privatevc(self, interaction: discord.Interaction):
         guild = interaction.guild
         user = interaction.user
@@ -96,7 +118,10 @@ class PrivateVC(commands.Cog):
         await interaction.response.send_message("✅ Private VC created.", ephemeral=True)
 
     # ================== /privatevcallow ==================
-    @app_commands.command(name="privatevcallow")
+    @app_commands.command(
+        name="privatevcallow",
+        description="Allow a user to join your private voice channel"
+    )
     async def privatevcallow(self, interaction: discord.Interaction, user: discord.Member):
         data = privatevc_col.find_one({"guild_id": interaction.guild.id})
         vc_data = data.get("active_vcs", {}).get(str(interaction.user.id))
@@ -116,7 +141,10 @@ class PrivateVC(commands.Cog):
         await interaction.response.send_message("✅ User allowed.", ephemeral=True)
 
     # ================== /privatevcremove ==================
-    @app_commands.command(name="privatevcremove")
+    @app_commands.command(
+        name="privatevcremove",
+        description="Remove a user from your private voice channel"
+    )
     async def privatevcremove(self, interaction: discord.Interaction, user: discord.Member):
         data = privatevc_col.find_one({"guild_id": interaction.guild.id})
         vc_data = data.get("active_vcs", {}).get(str(interaction.user.id))

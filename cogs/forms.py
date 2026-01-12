@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from database.models import forms_col, form_responses_col
 
+
 # ================= MODAL =================
 class DynamicRegisterModal(discord.ui.Modal):
     def __init__(self, guild_id, user, questions, auto_role_id=None, old_answers=None):
@@ -64,7 +65,10 @@ class UserFormView(discord.ui.View):
     async def register(self, interaction: discord.Interaction, button: discord.ui.Button):
         form = self.get_form(interaction.guild.id)
         if not form:
-            return await interaction.response.send_message("❌ Form not configured.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Form not configured.",
+                ephemeral=True
+            )
 
         existing = form_responses_col.find_one({
             "guild_id": interaction.guild.id,
@@ -89,6 +93,7 @@ class UserFormView(discord.ui.View):
     @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.primary)
     async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
         form = self.get_form(interaction.guild.id)
+
         existing = form_responses_col.find_one({
             "guild_id": interaction.guild.id,
             "user_id": interaction.user.id
@@ -118,7 +123,10 @@ class UserFormView(discord.ui.View):
         })
 
         if not deleted:
-            return await interaction.response.send_message("❌ No form found.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ No form found.",
+                ephemeral=True
+            )
 
         await interaction.response.send_message(
             "🗑️ **Your response has been deleted.**",
@@ -126,22 +134,35 @@ class UserFormView(discord.ui.View):
         )
 
 
-# ================= ADMIN COG =================
+# ================= FORMS COG =================
 class Forms(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    def admin_only():
-        async def predicate(interaction: discord.Interaction):
-            return (
-                interaction.user.guild_permissions.administrator
-                or interaction.user.id == interaction.guild.owner_id
-            )
-        return app_commands.check(predicate)
+    # -------------------------------
+    # ADMIN / OWNER CHECK (REFERENCE STYLE)
+    # -------------------------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild:
+            return False
+        if interaction.user.id == guild.owner_id:
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        return False
 
-    # ================= SET FORM =================
+    # -------------------------------
+    # SET FORM
+    # -------------------------------
     @app_commands.command(name="setform", description="Create a registration form")
-    @admin_only()
+    @app_commands.describe(
+        channel="Channel where form will be sent",
+        title="Embed title",
+        description="Embed description",
+        questions="Format: --q Question\n--ans",
+        auto_role="Role given after submit"
+    )
     async def setform(
         self,
         interaction: discord.Interaction,
@@ -151,6 +172,12 @@ class Forms(commands.Cog):
         questions: str,
         auto_role: discord.Role | None = None
     ):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Server Owner** can use this command.",
+                ephemeral=True
+            )
+
         if forms_col.find_one({"guild_id": interaction.guild.id}):
             return await interaction.response.send_message(
                 "❌ A form already exists.\nUse `/closeform` first.",
@@ -184,7 +211,10 @@ class Forms(commands.Cog):
             color=discord.Color.gold()
         )
 
-        msg = await channel.send(embed=embed, view=UserFormView(interaction.guild.id))
+        msg = await channel.send(
+            embed=embed,
+            view=UserFormView(interaction.guild.id)
+        )
 
         forms_col.insert_one({
             "guild_id": interaction.guild.id,
@@ -201,14 +231,27 @@ class Forms(commands.Cog):
             ephemeral=True
         )
 
-    # ================= CLOSE FORM =================
-    @app_commands.command(name="closeform", description="Close the form")
-    @admin_only()
-    async def closeform(self, interaction: discord.Interaction, delete_all: bool = False):
-        form = forms_col.find_one({"guild_id": interaction.guild.id})
+    # -------------------------------
+    # CLOSE FORM
+    # -------------------------------
+    @app_commands.command(name="closeform", description="Close the active form")
+    async def closeform(
+        self,
+        interaction: discord.Interaction,
+        delete_all: bool = False
+    ):
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Server Owner** can use this command.",
+                ephemeral=True
+            )
 
+        form = forms_col.find_one({"guild_id": interaction.guild.id})
         if not form:
-            return await interaction.response.send_message("❌ No active form.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ No active form.",
+                ephemeral=True
+            )
 
         channel = interaction.guild.get_channel(form["channel_id"])
         if channel:
@@ -232,12 +275,18 @@ class Forms(commands.Cog):
             ephemeral=True
         )
 
-    # ================= VIEW RESPONSES =================
+    # -------------------------------
+    # VIEW RESPONSES
+    # -------------------------------
     @app_commands.command(name="formresponses", description="View form responses")
-    @admin_only()
     async def formresponses(self, interaction: discord.Interaction):
-        responses = list(form_responses_col.find({"guild_id": interaction.guild.id}))
+        if not await self.is_admin_or_owner(interaction):
+            return await interaction.response.send_message(
+                "❌ Only **Admin or Server Owner** can use this command.",
+                ephemeral=True
+            )
 
+        responses = list(form_responses_col.find({"guild_id": interaction.guild.id}))
         if not responses:
             return await interaction.response.send_message(
                 "❌ No responses found.",
@@ -253,15 +302,26 @@ class Forms(commands.Cog):
             for q, a in r["answers"].items():
                 desc += f"**{q}**\n> {a}\n\n"
 
-            embed = discord.Embed(
-                title=f"📄 Response – {name}",
-                description=desc,
-                color=discord.Color.blurple()
+            embeds.append(
+                discord.Embed(
+                    title=f"📄 Response – {name}",
+                    description=desc,
+                    color=discord.Color.blurple()
+                )
             )
-            embeds.append(embed)
 
-        await interaction.response.send_message(embed=embeds[0], ephemeral=True)
+        await interaction.response.send_message(
+            embed=embeds[0],
+            ephemeral=True
+        )
+
+    # -------------------------------
+    # GLOBAL SLASH CHECK (REFERENCE)
+    # -------------------------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
 
-async def setup(bot):
+# ================= SETUP =================
+async def setup(bot: commands.Bot):
     await bot.add_cog(Forms(bot))

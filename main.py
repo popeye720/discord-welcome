@@ -7,16 +7,27 @@ import asyncio
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
-intents.members = True  
+intents.members = True
 intents.presences = True
 
+
+# ================= CUSTOM BOT =================
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        # 🔥 CORRECT PLACE FOR SLASH SYNC
+        synced = await self.tree.sync()
+        print(f"✅ Global slash commands synced: {len(synced)}")
+
+
 # ================= BOT INIT =================
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = MyBot(command_prefix="!", intents=intents)
+
 
 # ================= TOKEN =================
 TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     raise RuntimeError("TOKEN environment variable not set")
+
 
 # ================= EVENTS =================
 @bot.event
@@ -31,29 +42,24 @@ async def on_ready():
 
     # 🔥 REGISTER GUILD MANAGER PERSISTENT VIEW
     from cogs.guild_manager import GuildActionView
-    bot.add_view(GuildActionView(bot, guild_id=0))  # Required for restart support
+    bot.add_view(GuildActionView(bot, guild_id=0))
 
     # 🔥 REGISTER FORMS PERSISTENT VIEW
     from cogs.forms import UserFormView
     bot.add_view(UserFormView(guild_id=0))
 
-    # ---------------- SYNC SLASH COMMANDS ----------------
-    try:
-        await bot.tree.sync()
-        print("✅ Global slash commands synced")
-    except Exception as e:
-        print(f"❌ Failed to sync slash commands: {e}")
 
 @bot.event
 async def on_guild_join(guild):
     print(f"🆕 Bot joined server: {guild.name} ({guild.id})")
+
 
 # ================= LOAD COGS =================
 async def main():
     async with bot:
         await bot.load_extension("cogs.autorole")
         await bot.load_extension("cogs.ticket")
-        #await bot.load_extension("cogs.joinleave")
+        # await bot.load_extension("cogs.joinleave")
         await bot.load_extension("cogs.join_to_create")
         await bot.load_extension("cogs.auto_triggers")
         await bot.load_extension("cogs.free_games")
@@ -83,6 +89,7 @@ async def main():
 
         # ================= RUN BOT =================
         await bot.start(TOKEN)
+
 
 # ================= START BOT =================
 asyncio.run(main())

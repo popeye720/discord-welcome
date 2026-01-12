@@ -102,7 +102,7 @@ class Embedder(commands.Cog):
     )
     @app_commands.describe(
         channel="Channel of the message",
-        message_id="ID of the message to edit",
+        message_id="ID of the message to edit (as string!)",
         image="Optional new image",
         ping_everyone="Ping @everyone?"
     )
@@ -110,7 +110,7 @@ class Embedder(commands.Cog):
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
-        message_id: int,
+        message_id: str,  # ✅ CHANGE TO STRING
         image: discord.Attachment | None = None,
         ping_everyone: bool = False
     ):
@@ -120,7 +120,9 @@ class Embedder(commands.Cog):
             )
 
         try:
-            target = await channel.fetch_message(message_id)
+            target = await channel.fetch_message(int(message_id))  # ✅ CONVERT STRING TO INT
+        except ValueError:
+            return await interaction.response.send_message("❌ Invalid message ID.", ephemeral=True)
         except discord.NotFound:
             return await interaction.response.send_message("❌ Message not found.", ephemeral=True)
 
@@ -155,7 +157,9 @@ class Embedder(commands.Cog):
                     users=False
                 )
             )
-            await interaction.response.send_message(f"✅ Embedded message `{message_id}` updated successfully.", ephemeral=True)
+            await interaction.response.send_message(
+                f"✅ Embedded message `{message_id}` updated successfully.", ephemeral=True
+            )
 
         await interaction.response.send_modal(
             EmbedModal(title=f"Edit Embed {message_id}", callback=edit_embed, image=image, ping_everyone=ping_everyone)

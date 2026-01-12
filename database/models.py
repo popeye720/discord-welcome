@@ -32,10 +32,7 @@ forms_col = db["forms"]
 form_responses_col = db["form_responses"]
 
 forms_col.create_index("guild_id", unique=True)
-form_responses_col.create_index(
-    [("guild_id", 1), ("user_id", 1)],
-    unique=True
-)
+form_responses_col.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
 
 
 

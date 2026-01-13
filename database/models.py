@@ -69,4 +69,4 @@ guilds_col.create_index("guild_id", unique=True)
 blacklisted_guilds_col = db["blacklisted_guilds"]
 blacklisted_guilds_col.create_index("guild_id", unique=True)
 
-
+feedback_col = db["feedbacks"]

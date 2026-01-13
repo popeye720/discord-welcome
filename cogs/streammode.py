@@ -20,6 +20,7 @@ class StreamMode(commands.Cog):
         )
 
     # ----------------- HELPER: DM USER (EMBED) -----------------
+    # NOTE: We'll ONLY use this for the "mover" (the person who tried to move the bot).
     async def _dm_user(
         self,
         user: discord.abc.User,
@@ -66,7 +67,7 @@ class StreamMode(commands.Cog):
 
         if streammode_col.find_one({"guild_id": interaction.guild.id}):
             return await interaction.response.send_message(
-                "⚠️ Stream mode is already ENABLED.",
+                "⚠️ Stream mode is already **ENABLED**.",
                 ephemeral=True
             )
 
@@ -76,23 +77,20 @@ class StreamMode(commands.Cog):
             "enabled": True
         })
 
-        dm_ok = await self._dm_user(
-            interaction.user,
+        embed = discord.Embed(
             title="✅ Stream Mode Enabled",
             description=(
-                f"🔒 **Bots are now blocked** from joining the voice channel.\n\n"
-                f"🎙️ **VC:** {vc.name}\n"
+                f"🔒 **Bots are now blocked** from joining this voice channel.\n\n"
+                f"🎙️ **VC:** {vc.mention}\n"
                 f"🏠 **Server:** {interaction.guild.name}"
             ),
             color=discord.Color.green(),
-            footer="Stream Mode • Enabled"
+            timestamp=datetime.datetime.utcnow()
         )
+        embed.set_footer(text="Stream Mode • Enabled")
 
-        await interaction.response.send_message(
-            f"✅ Stream Mode Enabled in **{vc.name}**.\n"
-            f"{'📩 I DMed you the details.' if dm_ok else '⚠️ I could not DM you (DMs closed).'}",
-            ephemeral=True
-        )
+        # ✅ NO DM to the admin/owner — only ephemeral reply
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ----------------- /stream-mode-off -----------------
     @app_commands.command(
@@ -102,31 +100,28 @@ class StreamMode(commands.Cog):
     @app_commands.guild_only()
     async def streammodeoff(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return  # silent ignore
 
         result = streammode_col.delete_one({"guild_id": interaction.guild.id})
         if result.deleted_count == 0:
             return await interaction.response.send_message(
-                "⚠️ Stream mode is already OFF.",
+                "⚠️ Stream mode is already **OFF**.",
                 ephemeral=True
             )
 
-        dm_ok = await self._dm_user(
-            interaction.user,
+        embed = discord.Embed(
             title="🟢 Stream Mode Disabled",
             description=(
                 f"Stream Mode has been turned **OFF**.\n\n"
                 f"🏠 **Server:** {interaction.guild.name}"
             ),
             color=discord.Color.orange(),
-            footer="Stream Mode • Disabled"
+            timestamp=datetime.datetime.utcnow()
         )
+        embed.set_footer(text="Stream Mode • Disabled")
 
-        await interaction.response.send_message(
-            f"🟢 Stream Mode Disabled.\n"
-            f"{'📩 I DMed you the details.' if dm_ok else '⚠️ I could not DM you (DMs closed).'}",
-            ephemeral=True
-        )
+        # ✅ NO DM to the admin/owner — only ephemeral reply
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ----------------- /status-stream -----------------
     @app_commands.command(
@@ -136,46 +131,38 @@ class StreamMode(commands.Cog):
     @app_commands.guild_only()
     async def statusstream(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
-            return
+            return  # silent ignore
 
         data = streammode_col.find_one({"guild_id": interaction.guild.id})
 
         if not data:
-            dm_ok = await self._dm_user(
-                interaction.user,
+            embed = discord.Embed(
                 title="🔴 Stream Mode Status",
                 description=(
                     f"Stream Mode is currently **OFF**.\n\n"
                     f"🏠 **Server:** {interaction.guild.name}"
                 ),
                 color=discord.Color.red(),
-                footer="Stream Mode • Status"
+                timestamp=datetime.datetime.utcnow()
             )
-            return await interaction.response.send_message(
-                f"🔴 Stream Mode: OFF\n"
-                f"{'📩 I DMed you the status.' if dm_ok else '⚠️ I could not DM you.'}",
-                ephemeral=True
-            )
+            embed.set_footer(text="Stream Mode • Status")
+            return await interaction.response.send_message(embed=embed, ephemeral=True)
 
         vc = interaction.guild.get_channel(data["vc_id"])
 
-        dm_ok = await self._dm_user(
-            interaction.user,
+        embed = discord.Embed(
             title="🟢 Stream Mode Status",
             description=(
                 f"Stream Mode is currently **ON**.\n\n"
-                f"🎙️ **VC:** {vc.name if vc else 'Unknown'}\n"
+                f"🎙️ **VC:** {vc.mention if vc else 'Unknown'}\n"
                 f"🏠 **Server:** {interaction.guild.name}"
             ),
             color=discord.Color.green(),
-            footer="Stream Mode • Status"
+            timestamp=datetime.datetime.utcnow()
         )
+        embed.set_footer(text="Stream Mode • Status")
 
-        await interaction.response.send_message(
-            f"🟢 Stream Mode: ON\n"
-            f"{'📩 I DMed you the status.' if dm_ok else '⚠️ I could not DM you.'}",
-            ephemeral=True
-        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ----------------- HELPER: FIND WHO MOVED THE BOT -----------------
     async def _find_mover_from_audit_logs(
@@ -201,7 +188,7 @@ class StreamMode(commands.Cog):
             pass
         return None
 
-    # ----------------- BLOCK BOTS + USER NOTICE (EMBED DM) -----------------
+    # ----------------- BLOCK BOTS + DM ONLY TO THE "MOVER" -----------------
     @commands.Cog.listener()
     async def on_voice_state_update(
         self,
@@ -209,6 +196,7 @@ class StreamMode(commands.Cog):
         before: discord.VoiceState,
         after: discord.VoiceState
     ):
+        # only bots
         if not member.guild or not member.bot:
             return
 
@@ -216,25 +204,27 @@ class StreamMode(commands.Cog):
         if not data or not data.get("enabled"):
             return
 
+        # bot tried to join the protected VC
         if after.channel and after.channel.id == data["vc_id"]:
             guild = member.guild
             vc = after.channel
 
+            # kick bot from VC
             try:
                 await member.move_to(None)
             except Exception:
                 pass
 
+            # find who moved the bot, then DM THAT PERSON only
             mover = await self._find_mover_from_audit_logs(guild, member)
-
             if mover:
                 await self._dm_user(
                     mover,
                     title="🚫 Stream Mode Active",
                     description=(
                         f"Bots are **not allowed** in this voice channel.\n\n"
-                        f"🤖 **Bot Removed:** {member.name}\n"
-                        f"🎙️ **VC:** {vc.name}"
+                        f"🤖 **Bot Removed:** {member.mention} (`{member.name}`)\n"
+                        f"🎙️ **VC:** {vc.mention}"
                     ),
                     color=discord.Color.red(),
                     footer="Stream Mode Protection"

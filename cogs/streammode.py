@@ -1,109 +1,152 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 from database.models import streammode_col
 
 
 class StreamMode(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ---------- OWNER / ADMIN CHECK ----------
-    def has_permission(self, ctx):
+    # ----------------- PERMISSION CHECK (ADMIN / OWNER) -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild:
+            return False
         return (
-            ctx.guild
-            and (
-                ctx.author.id == ctx.guild.owner_id
-                or ctx.author.guild_permissions.administrator
-            )
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
         )
 
-    # ---------------- STREAM MODE ON ----------------
-    @commands.command(name="streammode")
-    @commands.guild_only()
-    async def streammode(self, ctx):
-        if not self.has_permission(ctx):
-            return await ctx.send(
-                "❌ Only **Server Owner or Admin** can enable stream mode."
+    # ----------------- /stream-mode -----------------
+    @app_commands.command(
+        name="stream-mode",
+        description="Enable stream mode (blocks bots from joining your current VC)"
+    )
+    @app_commands.guild_only()
+    async def streammode(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return await interaction.response.send_message(
+                "❌ You must be connected to a voice channel.",
+                ephemeral=True
             )
 
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            return await ctx.send(
-                "❌ You must be connected to a voice channel."
+        vc = interaction.user.voice.channel
+
+        if streammode_col.find_one({"guild_id": interaction.guild.id}):
+            return await interaction.response.send_message(
+                "⚠️ Stream mode is already ENABLED.",
+                ephemeral=True
             )
-
-        vc = ctx.author.voice.channel
-
-        existing = streammode_col.find_one({"guild_id": ctx.guild.id})
-        if existing:
-            return await ctx.send("⚠️ Stream mode is already ENABLED.")
 
         streammode_col.insert_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "vc_id": vc.id,
             "enabled": True
         })
 
-        await ctx.send(
-            f"✅ **Stream Mode Enabled**\n\n"
-            f"🔒 All bots are now blocked from joining **{vc.name}**"
+        await interaction.response.send_message(
+            f"✅ **Stream Mode Enabled**\n"
+            f"🔒 Bots are blocked from **{vc.name}**",
+            ephemeral=True
         )
 
-    # ---------------- STREAM MODE OFF ----------------
-    @commands.command(name="streammodeoff")
-    @commands.guild_only()
-    async def streamoff(self, ctx):
-        if not self.has_permission(ctx):
-            return await ctx.send(
-                "❌ Only **Server Owner or Admin** can disable stream mode."
-            )
+    # ----------------- /stream-mode-off -----------------
+    @app_commands.command(
+        name="stream-mode-off",
+        description="Disable stream mode"
+    )
+    @app_commands.guild_only()
+    async def streammodeoff(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return
 
-        result = streammode_col.delete_one({"guild_id": ctx.guild.id})
+        result = streammode_col.delete_one({"guild_id": interaction.guild.id})
         if result.deleted_count == 0:
-            return await ctx.send("⚠️ Stream mode is already OFF.")
-
-        await ctx.send(
-            "🟢 **Stream Mode Disabled**\n"
-            "Bots can now join voice channels."
-        )
-
-    # ---------------- STATUS COMMAND ----------------
-    @commands.command(name="statusstream")
-    @commands.guild_only()
-    async def statusstream(self, ctx):
-        if not self.has_permission(ctx):
-            return await ctx.send(
-                "❌ Only **Server Owner or Admin** can view stream status."
+            return await interaction.response.send_message(
+                "⚠️ Stream mode is already OFF.",
+                ephemeral=True
             )
 
-        data = streammode_col.find_one({"guild_id": ctx.guild.id})
-        if not data:
-            return await ctx.send("🔴 **Stream Mode Status:** OFF")
-
-        vc = ctx.guild.get_channel(data["vc_id"])
-        vc_name = vc.name if vc else "Unknown"
-
-        await ctx.send(
-            f"🟢 **Stream Mode Status:** ON\n"
-            f"🔒 Blocked VC: **{vc_name}**\n"
-            f"🤖 All bots are blocked from joining this VC."
+        await interaction.response.send_message(
+            "🟢 **Stream Mode Disabled**",
+            ephemeral=True
         )
 
-    # ---------------- BLOCK ALL BOTS ----------------
+    # ----------------- /status-stream -----------------
+    @app_commands.command(
+        name="status-stream",
+        description="Check stream mode status"
+    )
+    @app_commands.guild_only()
+    async def statusstream(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return
+
+        data = streammode_col.find_one({"guild_id": interaction.guild.id})
+        if not data:
+            return await interaction.response.send_message(
+                "🔴 **Stream Mode:** OFF",
+                ephemeral=True
+            )
+
+        vc = interaction.guild.get_channel(data["vc_id"])
+        await interaction.response.send_message(
+            f"🟢 **Stream Mode:** ON\n"
+            f"🔒 VC: **{vc.name if vc else 'Unknown'}**",
+            ephemeral=True
+        )
+
+    # ----------------- BLOCK BOTS + USER NOTICE -----------------
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
-        if not member.guild or not member.bot:
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState
+    ):
+        # only bots
+        if not member.bot or not member.guild:
             return
 
         data = streammode_col.find_one({"guild_id": member.guild.id})
         if not data or not data.get("enabled"):
             return
 
-        if after.channel and after.channel.id == data["vc_id"]:
+        blocked_vc_id = data["vc_id"]
+
+        if after.channel and after.channel.id == blocked_vc_id:
+            # try to find who pulled the bot
+            inviter = None
+            for m in after.channel.members:
+                if not m.bot and m.guild_permissions.move_members:
+                    inviter = m
+                    break
+
+            # kick bot
             try:
                 await member.move_to(None)
             except:
                 pass
 
+            # notify user (temporary msg)
+            if inviter:
+                try:
+                    await after.channel.send(
+                        f"🚫 {inviter.mention} **Stream Mode is enabled in this VC**\n"
+                        f"🤖 Bots are not allowed here.",
+                        delete_after=5
+                    )
+                except:
+                    pass
 
-async def setup(bot):
+    # ----------------- GLOBAL CHECK -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
+
+
+async def setup(bot: commands.Bot):
     await bot.add_cog(StreamMode(bot))

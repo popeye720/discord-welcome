@@ -129,7 +129,7 @@ class Feedback(commands.Cog):
             can_ephemeral = interaction.guild is not None
             try:
                 await interaction.response.send_message(
-                    "❌ Modal open nahi ho paya. Please try again.",
+                    "Please try again Later. ",
                     ephemeral=can_ephemeral
                 )
             except Exception:

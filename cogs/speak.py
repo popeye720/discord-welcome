@@ -6,14 +6,10 @@ import os
 import asyncio
 from gtts import gTTS
 from typing import Optional
-
-import shutil, subprocess
-print("FFMPEG:", shutil.which("ffmpeg"))
-subprocess.run(["ffmpeg", "-version"])
+import shutil
 
 # ================= CONFIG =================
-DELETE_DELAY = 5
-FFMPEG_PATH = "/usr/bin/ffmpeg"   # ✅ STATIC FFMPEG (Railway-safe)
+FFMPEG_PATH = "/usr/bin/ffmpeg"   # ✅ STATIC FFMPEG (Railway)
 # =========================================
 
 
@@ -21,14 +17,17 @@ class Speak(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+        # ---- DEBUG (SAFE AT INIT) ----
+        print("FFMPEG PATH:", shutil.which("ffmpeg"))
+
     # ================= SLASH COMMAND =================
     @app_commands.command(
         name="speak",
         description="Make the bot speak text in a voice channel"
     )
     @app_commands.describe(
-        channel="Voice channel (optional)",
-        text="Text to speak"
+        text="Text to speak",
+        channel="Voice channel (optional)"
     )
     async def speak(
         self,
@@ -38,7 +37,7 @@ class Speak(commands.Cog):
     ):
         await interaction.response.defer(ephemeral=True)
 
-        # ---- Resolve Voice Channel ----
+        # ---------- Resolve Voice Channel ----------
         if channel:
             target_channel = channel
         else:
@@ -49,38 +48,42 @@ class Speak(commands.Cog):
                 )
             target_channel = interaction.user.voice.channel
 
-        # ---- Connect / Move ----
+        # ---------- Connect / Move ----------
         vc = interaction.guild.voice_client
         if vc and vc.channel != target_channel:
             await vc.move_to(target_channel)
         elif not vc:
             vc = await target_channel.connect()
 
-        # ---- Create TTS File ----
+        # ---------- Stop if already playing ----------
+        if vc.is_playing():
+            vc.stop()
+
+        # ---------- Create TTS file ----------
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
             gTTS(text=text, lang="hi").save(f.name)
             audio_path = f.name
 
-        # ---- After Playback ----
+        # ---------- After playback ----------
         def after_playing(error):
+            if error:
+                print("VOICE ERROR:", error)
+
             try:
                 os.remove(audio_path)
             except:
                 pass
 
-            asyncio.run_coroutine_threadsafe(
-                vc.disconnect(),
-                self.bot.loop
-            )
+            # disconnect safely
+            coro = vc.disconnect()
+            asyncio.run_coroutine_threadsafe(coro, self.bot.loop)
 
-            if error:
-                print("FFMPEG ERROR:", error)
-
-        # ---- Play Audio ----
+        # ---------- Play audio ----------
         source = discord.FFmpegPCMAudio(
             audio_path,
             executable=FFMPEG_PATH,
-            options="-loglevel warning -filter:a volume=3.0"
+            before_options="-nostdin",
+            options="-loglevel error -vn"
         )
 
         vc.play(source, after=after_playing)

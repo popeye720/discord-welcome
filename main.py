@@ -87,6 +87,7 @@ async def main():
         await bot.load_extension("cogs.privatevc")
         #await bot.load_extension("cogs.speak")
         #await bot.load_extension("cogs.joinleave")
+
         
         # ================= RUN BOT =================
         await bot.start(TOKEN)

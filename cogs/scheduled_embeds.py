@@ -97,17 +97,22 @@ class ScheduledEmbedsSlash(commands.Cog):
         except ValueError:
             return None
 
-    # ================= /schembed CREATE (MODAL) =================
-    @app_commands.command(
-        name="schembed",
-        description="Schedule an embed message (IST input, stored in UTC)"
+    # =========================================================
+    # ✅ GROUP: /schedule
+    # =========================================================
+    schedule = app_commands.Group(
+        name="schedule",
+        description="Schedule embed messages (IST input, stored in UTC)"
     )
+
+    # ================= /schedule create (MODAL) =================
+    @schedule.command(name="create", description="Create a scheduled embed")
     @app_commands.describe(
         channel="Target channel",
         time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (IST)",
         ping_everyone="Ping @everyone?"
     )
-    async def schembed(
+    async def schedule_create(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel,
@@ -174,12 +179,9 @@ class ScheduledEmbedsSlash(commands.Cog):
             )
         )
 
-    # ================= /schembedlist LIST =================
-    @app_commands.command(
-        name="schembedlist",
-        description="List scheduled embeds (shows IST + UTC)"
-    )
-    async def schembedlist(self, interaction: discord.Interaction):
+    # ================= /schedule list =================
+    @schedule.command(name="list", description="List scheduled embeds (shows IST + UTC)")
+    async def schedule_list(self, interaction: discord.Interaction):
         if not self.can_manage(interaction):
             return await interaction.response.send_message(
                 "❌ Only **Server Owner or Admin** can use this command.",
@@ -199,7 +201,6 @@ class ScheduledEmbedsSlash(commands.Cog):
         desc_lines = []
         for d in data[:25]:
             dt_utc = d["send_time"]
-            # if old records were naive, force UTC (safety)
             if dt_utc.tzinfo is None:
                 dt_utc = dt_utc.replace(tzinfo=timezone.utc)
 
@@ -223,13 +224,10 @@ class ScheduledEmbedsSlash(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ================= /schembeddelete DELETE =================
-    @app_commands.command(
-        name="schembeddelete",
-        description="Delete a scheduled embed by its ID"
-    )
+    # ================= /schedule delete =================
+    @schedule.command(name="delete", description="Delete a scheduled embed by its ID")
     @app_commands.describe(schedule_id="Schedule ID (8 chars)")
-    async def schembeddelete(self, interaction: discord.Interaction, schedule_id: str):
+    async def schedule_delete(self, interaction: discord.Interaction, schedule_id: str):
         if not self.can_manage(interaction):
             return await interaction.response.send_message(
                 "❌ Only **Server Owner or Admin** can use this command.",
@@ -246,16 +244,13 @@ class ScheduledEmbedsSlash(commands.Cog):
 
         await interaction.response.send_message(f"🗑️ Schedule `{schedule_id}` deleted.", ephemeral=True)
 
-    # ================= /schembededit EDIT MESSAGE (MODAL) =================
-    @app_commands.command(
-        name="schembededit",
-        description="Edit the message of a scheduled embed (uses modal)"
-    )
+    # ================= /schedule edit (MODAL) =================
+    @schedule.command(name="edit", description="Edit the message of a scheduled embed (uses modal)")
     @app_commands.describe(
         schedule_id="Schedule ID (8 chars)",
         ping_everyone="Ping @everyone?"
     )
-    async def schembededit(
+    async def schedule_edit(
         self,
         interaction: discord.Interaction,
         schedule_id: str,
@@ -308,16 +303,13 @@ class ScheduledEmbedsSlash(commands.Cog):
             )
         )
 
-    # ================= /schembedtime RESCHEDULE =================
-    @app_commands.command(
-        name="schembedtime",
-        description="Change the send time of a scheduled embed (IST input)"
-    )
+    # ================= /schedule time =================
+    @schedule.command(name="time", description="Change the send time of a scheduled embed (IST input)")
     @app_commands.describe(
         schedule_id="Schedule ID (8 chars)",
         new_time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (IST)"
     )
-    async def schembedtime(self, interaction: discord.Interaction, schedule_id: str, new_time: str):
+    async def schedule_time(self, interaction: discord.Interaction, schedule_id: str, new_time: str):
         if not self.can_manage(interaction):
             return await interaction.response.send_message(
                 "❌ Only **Server Owner or Admin** can use this command.",

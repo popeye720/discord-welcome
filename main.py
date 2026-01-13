@@ -58,9 +58,7 @@ async def on_guild_join(guild):
 async def main():
     async with bot:
         await bot.load_extension("cogs.autorole")
-        await bot.load_extension("cogs.joinleave")
         await bot.load_extension("cogs.ticket")
-        await bot.load_extension("cogs.speak")
         await bot.load_extension("cogs.join_to_create")
         await bot.load_extension("cogs.auto_triggers")
         await bot.load_extension("cogs.free_games")
@@ -87,7 +85,9 @@ async def main():
         await bot.load_extension("cogs.search")
         await bot.load_extension("cogs.autorenamer")
         await bot.load_extension("cogs.privatevc")
-
+        #await bot.load_extension("cogs.speak")
+        #await bot.load_extension("cogs.joinleave")
+        
         # ================= RUN BOT =================
         await bot.start(TOKEN)
 

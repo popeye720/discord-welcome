@@ -1,11 +1,14 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import re
 import uuid
 
 from database.models import scheduled_embeds_col
+
+# ✅ IST timezone
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 # ================= MODAL (MESSAGE INPUT) =================
@@ -53,33 +56,55 @@ class ScheduledEmbedsSlash(commands.Cog):
             )
         )
 
-    # ================= TIME PARSER (SAME CORE LOGIC) =================
+    # ================= HELPERS =================
+    def _strip_seconds(self, dt: datetime) -> datetime:
+        return dt.replace(second=0, microsecond=0)
+
+    def to_utc(self, dt_ist: datetime) -> datetime:
+        """IST aware -> UTC aware"""
+        return dt_ist.astimezone(timezone.utc)
+
+    def to_ist(self, dt_utc: datetime) -> datetime:
+        """UTC aware -> IST aware"""
+        return dt_utc.astimezone(IST)
+
+    # ================= TIME PARSER (IST INPUT) =================
     def parse_time(self, time_str: str):
-        # supports: 10m / 2h / 1d
+        time_str = time_str.strip()
+
+        # supports: 10m / 2h / 1d  (✅ IST now)
         if re.match(r"^\d+[mhd]$", time_str):
             value = int(time_str[:-1])
             unit = time_str[-1]
-            if unit == "m":
-                return datetime.utcnow() + timedelta(minutes=value)
-            if unit == "h":
-                return datetime.utcnow() + timedelta(hours=value)
-            if unit == "d":
-                return datetime.utcnow() + timedelta(days=value)
 
-        # supports: "YYYY-MM-DD HH:MM"
+            now_ist = datetime.now(IST)
+            if unit == "m":
+                dt_ist = now_ist + timedelta(minutes=value)
+            elif unit == "h":
+                dt_ist = now_ist + timedelta(hours=value)
+            else:  # "d"
+                dt_ist = now_ist + timedelta(days=value)
+
+            dt_ist = self._strip_seconds(dt_ist)
+            return self.to_utc(dt_ist)  # ✅ store UTC
+
+        # supports: "YYYY-MM-DD HH:MM"  (✅ treat as IST)
         try:
-            return datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+            naive = datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+            dt_ist = naive.replace(tzinfo=IST)
+            dt_ist = self._strip_seconds(dt_ist)
+            return self.to_utc(dt_ist)  # ✅ store UTC
         except ValueError:
             return None
 
     # ================= /schembed CREATE (MODAL) =================
     @app_commands.command(
         name="schembed",
-        description="Schedule an embed message in a channel (uses modal for message)"
+        description="Schedule an embed message (IST input, stored in UTC)"
     )
     @app_commands.describe(
         channel="Target channel",
-        time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (UTC)",
+        time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (IST)",
         ping_everyone="Ping @everyone?"
     )
     async def schembed(
@@ -95,10 +120,10 @@ class ScheduledEmbedsSlash(commands.Cog):
                 ephemeral=True
             )
 
-        send_time = self.parse_time(time)
-        if not send_time:
+        send_time_utc = self.parse_time(time)
+        if not send_time_utc:
             return await interaction.response.send_message(
-                "❌ Invalid time format.\nUse: `10m / 2h / 1d` OR `YYYY-MM-DD HH:MM` (UTC).",
+                "❌ Invalid time format.\nUse: `10m / 2h / 1d` OR `YYYY-MM-DD HH:MM` (IST).",
                 ephemeral=True
             )
 
@@ -109,9 +134,10 @@ class ScheduledEmbedsSlash(commands.Cog):
             )
 
         async def create_schedule(i: discord.Interaction, message: str, ping: bool):
-            # (backward compatible) allow "--ping" typed inside modal too
             ping2 = ping
             msg2 = message.strip()
+
+            # (backward compatible) allow "--ping" typed inside modal too
             if msg2.startswith("--ping"):
                 if not i.user.guild_permissions.mention_everyone:
                     return await i.response.send_message("❌ You cannot ping @everyone.", ephemeral=True)
@@ -123,17 +149,20 @@ class ScheduledEmbedsSlash(commands.Cog):
                 "guild_id": i.guild.id,
                 "schedule_id": schedule_id,
                 "channel_id": channel.id,
-                "send_time": send_time,
+                "send_time": send_time_utc,  # ✅ UTC stored
                 "message": msg2,
                 "ping": ping2,
                 "author_id": i.user.id
             })
 
+            send_time_ist = self.to_ist(send_time_utc)
+
             await i.response.send_message(
                 "✅ Scheduled embed created\n"
                 f"🆔 ID: `{schedule_id}`\n"
                 f"📍 Channel: {channel.mention}\n"
-                f"⏰ Time (UTC): `{send_time}`",
+                f"🇮🇳 Time (IST): `{send_time_ist.strftime('%Y-%m-%d %H:%M')}`\n"
+                f"🌍 Time (UTC): `{send_time_utc.strftime('%Y-%m-%d %H:%M')}`",
                 ephemeral=True
             )
 
@@ -148,7 +177,7 @@ class ScheduledEmbedsSlash(commands.Cog):
     # ================= /schembedlist LIST =================
     @app_commands.command(
         name="schembedlist",
-        description="List all scheduled embeds in this server"
+        description="List scheduled embeds (shows IST + UTC)"
     )
     async def schembedlist(self, interaction: discord.Interaction):
         if not self.can_manage(interaction):
@@ -161,18 +190,26 @@ class ScheduledEmbedsSlash(commands.Cog):
         if not data:
             return await interaction.response.send_message("📭 No scheduled embeds.", ephemeral=True)
 
-        # Sort by time for nicer list
+        # Sort by UTC time
         try:
-            data.sort(key=lambda x: x.get("send_time", datetime.max))
+            data.sort(key=lambda x: x.get("send_time", datetime.max.replace(tzinfo=timezone.utc)))
         except Exception:
             pass
 
         desc_lines = []
-        for d in data[:25]:  # keep it safe for embed length
+        for d in data[:25]:
+            dt_utc = d["send_time"]
+            # if old records were naive, force UTC (safety)
+            if dt_utc.tzinfo is None:
+                dt_utc = dt_utc.replace(tzinfo=timezone.utc)
+
+            dt_ist = self.to_ist(dt_utc)
+
             desc_lines.append(
                 f"**ID:** `{d['schedule_id']}`\n"
                 f"Channel: <#{d['channel_id']}>\n"
-                f"Time (UTC): `{d['send_time']}`\n"
+                f"IST: `{dt_ist.strftime('%Y-%m-%d %H:%M')}`\n"
+                f"UTC: `{dt_utc.strftime('%Y-%m-%d %H:%M')}`\n"
                 f"Ping: `{'yes' if d.get('ping') else 'no'}`\n"
             )
 
@@ -247,7 +284,6 @@ class ScheduledEmbedsSlash(commands.Cog):
             ping2 = ping
             msg2 = new_message.strip()
 
-            # (backward compatible) allow "--ping" typed inside modal too
             if msg2.startswith("--ping"):
                 if not i.user.guild_permissions.mention_everyone:
                     return await i.response.send_message("❌ You cannot ping @everyone.", ephemeral=True)
@@ -275,11 +311,11 @@ class ScheduledEmbedsSlash(commands.Cog):
     # ================= /schembedtime RESCHEDULE =================
     @app_commands.command(
         name="schembedtime",
-        description="Change the send time of a scheduled embed"
+        description="Change the send time of a scheduled embed (IST input)"
     )
     @app_commands.describe(
         schedule_id="Schedule ID (8 chars)",
-        new_time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (UTC)"
+        new_time="Time: 10m / 2h / 1d OR 'YYYY-MM-DD HH:MM' (IST)"
     )
     async def schembedtime(self, interaction: discord.Interaction, schedule_id: str, new_time: str):
         if not self.can_manage(interaction):
@@ -288,33 +324,34 @@ class ScheduledEmbedsSlash(commands.Cog):
                 ephemeral=True
             )
 
-        new_dt = self.parse_time(new_time)
-        if not new_dt:
+        new_dt_utc = self.parse_time(new_time)
+        if not new_dt_utc:
             return await interaction.response.send_message(
-                "❌ Invalid time format.\nUse: `10m / 2h / 1d` OR `YYYY-MM-DD HH:MM` (UTC).",
+                "❌ Invalid time format.\nUse: `10m / 2h / 1d` OR `YYYY-MM-DD HH:MM` (IST).",
                 ephemeral=True
             )
 
         result = scheduled_embeds_col.find_one_and_update(
             {"guild_id": interaction.guild.id, "schedule_id": schedule_id},
-            {"$set": {"send_time": new_dt}}
+            {"$set": {"send_time": new_dt_utc}}
         )
 
         if not result:
             return await interaction.response.send_message("❌ Invalid schedule ID.", ephemeral=True)
 
         await interaction.response.send_message(
-            f"⏰ Schedule `{schedule_id}` rescheduled to `{new_dt}` (UTC).",
+            f"⏰ Schedule `{schedule_id}` rescheduled to "
+            f"`{new_dt_utc.astimezone(IST).strftime('%Y-%m-%d %H:%M')}` (IST).",
             ephemeral=True
         )
 
-    # ================= RUNNER (SAME CORE LOGIC) =================
+    # ================= RUNNER (COMPARE IN UTC) =================
     @tasks.loop(seconds=20)
     async def scheduler(self):
-        now = datetime.utcnow()
+        now_utc = datetime.now(timezone.utc).replace(second=0, microsecond=0)
 
         data = list(scheduled_embeds_col.find({
-            "send_time": {"$lte": now}
+            "send_time": {"$lte": now_utc}
         }))
 
         for d in data:
@@ -337,7 +374,6 @@ class ScheduledEmbedsSlash(commands.Cog):
             except Exception as e:
                 print("❌ Failed to send scheduled embed:", e)
 
-            # delete after send
             scheduled_embeds_col.delete_one({"_id": d["_id"]})
 
     @scheduler.before_loop

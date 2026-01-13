@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from database.models import streammode_col
-
+import datetime
 
 class StreamMode(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -26,6 +26,7 @@ class StreamMode(commands.Cog):
     @app_commands.guild_only()
     async def streammode(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
+            # silent ignore (as you wanted earlier)
             return
 
         if not interaction.user.voice or not interaction.user.voice.channel:
@@ -100,7 +101,45 @@ class StreamMode(commands.Cog):
             ephemeral=True
         )
 
-    # ----------------- BLOCK BOTS + USER NOTICE -----------------
+    # ----------------- HELPER: FIND WHO MOVED THE BOT (AUDIT LOG) -----------------
+    async def _find_mover_from_audit_logs(
+        self,
+        guild: discord.Guild,
+        target_member: discord.Member
+    ) -> discord.Member | None:
+        """
+        Tries to find who moved the member using audit logs.
+        Needs 'View Audit Log' permission.
+        """
+        try:
+            me = guild.me or guild.get_member(self.bot.user.id)
+            if not me or not me.guild_permissions.view_audit_log:
+                return None
+
+            # check latest entries
+            async for entry in guild.audit_logs(limit=6, action=discord.AuditLogAction.member_move):
+                # entry.target can be Member/User depending on cache
+                if entry.target and getattr(entry.target, "id", None) == target_member.id:
+                    # time window check (last ~10 seconds)
+                    created = entry.created_at.replace(tzinfo=datetime.timezone.utc)
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    if (now - created).total_seconds() <= 10:
+                        return entry.user  # the moderator who moved
+        except Exception:
+            pass
+        return None
+
+    # ----------------- HELPER: DM USER -----------------
+    async def _dm_user(self, user: discord.abc.User, message: str) -> bool:
+        try:
+            await user.send(message)
+            return True
+        except discord.Forbidden:
+            return False
+        except Exception:
+            return False
+
+    # ----------------- BLOCK BOTS + USER NOTICE (DM) -----------------
     @commands.Cog.listener()
     async def on_voice_state_update(
         self,
@@ -109,7 +148,7 @@ class StreamMode(commands.Cog):
         after: discord.VoiceState
     ):
         # only bots
-        if not member.bot or not member.guild:
+        if not member.guild or not member.bot:
             return
 
         data = streammode_col.find_one({"guild_id": member.guild.id})
@@ -118,30 +157,44 @@ class StreamMode(commands.Cog):
 
         blocked_vc_id = data["vc_id"]
 
+        # bot joined the blocked VC
         if after.channel and after.channel.id == blocked_vc_id:
-            # try to find who pulled the bot
-            inviter = None
-            for m in after.channel.members:
-                if not m.bot and m.guild_permissions.move_members:
-                    inviter = m
-                    break
+            guild = member.guild
+            vc = after.channel
 
-            # kick bot
+            # 1) Kick the bot out
             try:
                 await member.move_to(None)
-            except:
+            except Exception:
                 pass
 
-            # notify user (temporary msg)
-            if inviter:
-                try:
-                    await after.channel.send(
-                        f"🚫 {inviter.mention} **Stream Mode is enabled in this VC**\n"
-                        f"🤖 Bots are not allowed here.",
-                        delete_after=5
-                    )
-                except:
-                    pass
+            # 2) Find who moved it (best effort)
+            mover = await self._find_mover_from_audit_logs(guild, member)
+
+            # fallback heuristic (if audit log not available)
+            if mover is None:
+                for m in vc.members:
+                    if not m.bot and m.guild_permissions.move_members:
+                        mover = m
+                        break
+
+            # 3) DM the mover (only that user sees)
+            if mover:
+                dm_ok = await self._dm_user(
+                    mover,
+                    f"🚫 **Stream Mode is enabled in VC: {vc.name}**\n"
+                    f"🤖 Bots are not allowed there, so I removed **{member.name}** from the channel."
+                )
+
+                # optional fallback: if DM closed, send short msg in VC text chat (if exists)
+                if not dm_ok:
+                    try:
+                        await vc.send(
+                            f"🚫 {mover.mention} Stream Mode is enabled here. Bots are not allowed.",
+                            delete_after=5
+                        )
+                    except Exception:
+                        pass
 
     # ----------------- GLOBAL CHECK -----------------
     async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:

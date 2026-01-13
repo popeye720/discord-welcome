@@ -20,7 +20,7 @@ class ServerProfile(commands.Cog):
         return False
 
     # ----------------- /serverprofile -----------------
-    @app_commands.command(name="serverprofile", description="Show server profile (Admin/Owner only)")
+    @app_commands.command(name="server-profile", description="Show server profile (Admin/Owner only)")
     async def serverprofile(self, interaction: discord.Interaction):
         # permission
         if not await self.is_admin_or_owner(interaction):
@@ -32,7 +32,7 @@ class ServerProfile(commands.Cog):
                 "❌ This command can only be used in a server.",
                 ephemeral=True
             )
-
+    
         # counts
         bots = sum(1 for m in guild.members if m.bot)
         humans = guild.member_count - bots

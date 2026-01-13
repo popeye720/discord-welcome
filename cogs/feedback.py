@@ -4,7 +4,7 @@ from discord import app_commands
 import datetime
 import uuid
 
-from database.models import feedback_col  # ✅ ensure this exists in models.py
+from database.models import feedback_col  # ensure this exists
 
 
 # ========================= MODAL (TOP 5 QUESTIONS) =========================
@@ -12,45 +12,41 @@ class FeedbackModal(discord.ui.Modal, title="📝 Feedback Form"):
     def __init__(self):
         super().__init__(timeout=300)
 
-        # Q1
+        # ✅ Labels MUST be <= 45 chars
         self.q1_name = discord.ui.TextInput(
-            label="1) What is your name or nickname?",
+            label="1) Name / Nickname",
             placeholder="Enter your name...",
             style=discord.TextStyle.short,
             required=True,
             max_length=80
         )
 
-        # Q2
         self.q2_like = discord.ui.TextInput(
-            label="2) What do you like the most about this server/bot?",
-            placeholder="Example: stream mode, moderation, tickets, etc.",
+            label="2) What do you like most?",
+            placeholder="Example: stream mode, moderation, tickets...",
             style=discord.TextStyle.paragraph,
             required=True,
             max_length=700
         )
 
-        # Q3
         self.q3_problem = discord.ui.TextInput(
-            label="3) What problem or disturbance do you face?",
-            placeholder="Example: spam, voice disturbance, bugs, etc.",
+            label="3) Any problem / disturbance?",
+            placeholder="Example: spam, VC disturbance, bugs...",
             style=discord.TextStyle.paragraph,
             required=True,
             max_length=900
         )
 
-        # Q4
         self.q4_feature = discord.ui.TextInput(
-            label="4) What new feature would make your experience better?",
-            placeholder="Tell your feature idea in detail...",
+            label="4) What new feature you want?",
+            placeholder="Describe your feature idea...",
             style=discord.TextStyle.paragraph,
             required=True,
             max_length=900
         )
 
-        # Q5
         self.q5_extra = discord.ui.TextInput(
-            label="5) Any additional suggestion or improvement?",
+            label="5) Extra suggestion (optional)",
             placeholder="Any extra feedback...",
             style=discord.TextStyle.paragraph,
             required=False,
@@ -83,8 +79,8 @@ class FeedbackModal(discord.ui.Modal, title="📝 Feedback Form"):
 
         try:
             feedback_col.insert_one(doc)
-        except Exception:
-            # Ephemeral only works in guild, not in DMs
+        except Exception as e:
+            print("❌ feedback_col.insert_one error:", repr(e))
             can_ephemeral = interaction.guild is not None
             return await interaction.response.send_message(
                 "❌ Feedback save nahi ho paya. Please try again.",
@@ -110,13 +106,12 @@ class Feedback(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        # optional but recommended indexes (safe try)
         try:
             feedback_col.create_index("user_id")
             feedback_col.create_index("guild_id")
             feedback_col.create_index("created_at_utc")
-        except Exception:
-            pass
+        except Exception as e:
+            print("Index create error:", repr(e))
 
     @app_commands.command(
         name="feedback",
@@ -125,15 +120,16 @@ class Feedback(commands.Cog):
     async def feedback(self, interaction: discord.Interaction):
         try:
             await interaction.response.send_modal(FeedbackModal())
-        except Exception:
+        except Exception as e:
+            print("❌ send_modal error:", repr(e))
             can_ephemeral = interaction.guild is not None
             try:
                 await interaction.response.send_message(
-                    "Please try again Later. ",
+                    "Please try again later.",
                     ephemeral=can_ephemeral
                 )
-            except Exception:
-                pass
+            except Exception as e2:
+                print("❌ fallback send_message error:", repr(e2))
 
 
 async def setup(bot: commands.Bot):

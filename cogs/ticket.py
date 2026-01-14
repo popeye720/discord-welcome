@@ -1,5 +1,8 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
+import datetime
+from typing import Optional
 
 from database.models import ticket_col
 from database.mongo import db
@@ -9,7 +12,6 @@ ticket_panel_col = db["ticket_panels"]
 
 
 # ================= CLOSE BUTTON =================
-
 class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -46,7 +48,6 @@ class CloseTicketView(discord.ui.View):
 
 
 # ================= CREATE BUTTON =================
-
 class TicketButton(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -99,6 +100,7 @@ class TicketButton(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True),
         }
 
+        # allow all admin roles to view
         for role in guild.roles:
             if role.permissions.administrator:
                 overwrites[role] = discord.PermissionOverwrite(
@@ -123,7 +125,10 @@ class TicketButton(discord.ui.View):
 
         embed = discord.Embed(
             title="Support Ticket",
-            description="Please describe your issue and our team will assist you shortly.\nUse the **Close Ticket** button when resolved.",
+            description=(
+                "Please describe your issue and our team will assist you shortly.\n"
+                "Use the **Close Ticket** button when resolved."
+            ),
             color=discord.Color.blurple()
         )
 
@@ -140,33 +145,67 @@ class TicketButton(discord.ui.View):
 
 
 # ================= COG =================
-
 class TicketSystem(commands.Cog):
-    def __init__(self, bot):
+    """
+    Slash Commands:
+    - /create-ticket  (Admin/Owner only) -> creates panel message with button and saves category
+    - /delete-ticket  (Admin/Owner only) -> deletes config and tries to delete panel message
+
+    Non-admin/owner: silent ignore (no leaks), same style as your stream-mode ref.
+    """
+
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -------- SETUP TICKET SYSTEM (ADMIN / OWNER ONLY) --------
-    @commands.command(name="createticket")
-    @commands.guild_only()
-    async def createticket(self, ctx, channel_id: int):
-        if not (
-            ctx.author.id == ctx.guild.owner_id
-            or ctx.author.guild_permissions.administrator
-        ):
-            return await ctx.send("❌ Only **Admin or Server Owner** can set up tickets.")
+    # ----------------- PERMISSION CHECK (ADMIN / OWNER) -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild:
+            return False
+        return (
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
+        )
 
-        channel = self.bot.get_channel(channel_id)
-        if not channel or not channel.category:
-            return await ctx.send("❌ Invalid channel or missing category.")
+    # ----------------- /create-ticket -----------------
+    @app_commands.command(
+        name="create-ticket",
+        description="Setup ticket panel in a channel (Admin/Owner only)"
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        channel="Channel where the ticket panel will be sent (must be inside the ticket category)"
+    )
+    async def create_ticket_panel(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel
+    ):
+        if not await self.is_admin_or_owner(interaction):
+            return  # silent ignore
 
-        existing = ticket_panel_col.find_one({"guild_id": ctx.guild.id})
+        # extra safety: channel must be from same guild
+        if channel.guild.id != interaction.guild.id:
+            return await interaction.response.send_message(
+                "❌ Please select a channel from this server only.",
+                ephemeral=True
+            )
+
+        if not channel.category:
+            return await interaction.response.send_message(
+                "❌ Invalid channel or missing category.",
+                ephemeral=True
+            )
+
+        existing = ticket_panel_col.find_one({"guild_id": interaction.guild.id})
         if existing:
-            return await ctx.send(
-                "❌ Ticket system is already configured in this server."
+            return await interaction.response.send_message(
+                "❌ Ticket system is already configured in this server.",
+                ephemeral=True
             )
 
         ticket_panel_col.insert_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "panel_channel_id": channel.id,
             "category_id": channel.category.id
         })
@@ -174,38 +213,58 @@ class TicketSystem(commands.Cog):
         embed = discord.Embed(
             title="🎫 Support Tickets",
             description="Need assistance? Click the button below to create a ticket.",
-            color=discord.Color.green()
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.utcnow()
         )
+        embed.set_footer(text="Ticket System • Panel")
 
         await channel.send(embed=embed, view=TicketButton())
-        await ctx.send("✅ Ticket system setup completed.")
 
-    # -------- DELETE TICKET SYSTEM (ADMIN / OWNER ONLY) --------
-    @commands.command(name="deleteticket")
-    @commands.guild_only()
-    async def deleteticket(self, ctx):
-        if not (
-            ctx.author.id == ctx.guild.owner_id
-            or ctx.author.guild_permissions.administrator
-        ):
-            return await ctx.send("❌ Only **Admin or Server Owner** can delete ticket system.")
+        await interaction.response.send_message(
+            "✅ Ticket system setup completed.",
+            ephemeral=True
+        )
+
+    # ----------------- /delete-ticket -----------------
+    @app_commands.command(
+        name="delete-ticket",
+        description="Delete ticket system configuration (Admin/Owner only)"
+    )
+    @app_commands.guild_only()
+    async def delete_ticket_panel(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return  # silent ignore
 
         panel = ticket_panel_col.find_one_and_delete({
-            "guild_id": ctx.guild.id
+            "guild_id": interaction.guild.id
         })
 
         if not panel:
-            return await ctx.send("❌ Ticket system is not set up.")
+            return await interaction.response.send_message(
+                "❌ Ticket system is not set up.",
+                ephemeral=True
+            )
 
-        channel = self.bot.get_channel(panel["panel_channel_id"])
-        if channel:
-            async for msg in channel.history(limit=50):
-                if msg.author == self.bot.user and msg.components:
-                    await msg.delete()
-                    break
+        channel = interaction.guild.get_channel(panel.get("panel_channel_id"))
+        if isinstance(channel, discord.TextChannel):
+            # try delete bot's panel message (the one that has components)
+            try:
+                async for msg in channel.history(limit=50):
+                    if msg.author == self.bot.user and msg.components:
+                        await msg.delete()
+                        break
+            except Exception:
+                pass
 
-        await ctx.send("✅ Ticket system deleted successfully.")
+        await interaction.response.send_message(
+            "✅ Ticket system deleted successfully.",
+            ephemeral=True
+        )
+
+    # ----------------- GLOBAL CHECK (same style as ref) -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(TicketSystem(bot))

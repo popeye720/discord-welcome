@@ -1,26 +1,11 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import feedparser
-import re
-
+from typing import Optional, List
 from database.models import ytnotify_col
 
-
 CHECK_INTERVAL = 8  # minutes
-
-
-def resolve_text_channel(guild, arg: str):
-    if not arg:
-        return None
-
-    match = re.match(r"<#(\d+)>", arg)
-    if match:
-        return guild.get_channel(int(match.group(1)))
-
-    if arg.isdigit():
-        return guild.get_channel(int(arg))
-
-    return None
 
 
 def format_yt_message(channel_name, entry, mention):
@@ -42,122 +27,163 @@ def format_yt_message(channel_name, entry, mention):
 
 
 class YTNotify(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.check_feeds.start()
 
     def cog_unload(self):
         self.check_feeds.cancel()
 
-    # ---------------- ADD ---------------- #
+    # ----------------- PERMISSION CHECK -----------------
+    async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
+        guild = interaction.guild
+        if not guild:
+            return False
+        return (
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
+        )
 
-    @commands.command(name="ytnotify")
-    @commands.has_permissions(administrator=True)
-    async def ytnotify(
+    # ================= /ytnotify-add =================
+    @app_commands.command(
+        name="ytnotify-add",
+        description="Add YouTube upload/live notifications"
+    )
+    @app_commands.guild_only()
+    @app_commands.describe(
+        channel="Discord channel to send notifications",
+        yt_channel_id="YouTube Channel ID (UCxxxx)",
+        mention_role="Optional role to mention (default: @everyone)"
+    )
+    async def ytnotify_add(
         self,
-        ctx,
-        channel_arg: str = None,
-        yt_channel_id: str = None,
-        role_id: str = None
+        interaction: discord.Interaction,
+        channel: discord.TextChannel,
+        yt_channel_id: str,
+        mention_role: Optional[discord.Role] = None
     ):
-
-        if not channel_arg or not yt_channel_id:
-            return await ctx.reply(
-                "❌ Usage: `!ytnotify #channel UCxxxx [role_id]`"
-            )
-
-        channel = resolve_text_channel(ctx.guild, channel_arg)
-        if not channel or not isinstance(channel, discord.TextChannel):
-            return await ctx.reply("❌ Invalid Discord channel.")
-
-        # mention logic (🔥 ONLY NEW PART)
-        if role_id:
-            role = ctx.guild.get_role(int(role_id))
-            if not role:
-                return await ctx.reply("❌ Invalid role ID.")
-            mention = role.mention
-        else:
-            mention = "@everyone"
+        if not await self.is_admin_or_owner(interaction):
+            return  # silent ignore
 
         exists = ytnotify_col.find_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "yt_channel_id": yt_channel_id
         })
         if exists:
-            return await ctx.reply("⚠️ This YouTube channel is already added.")
+            return await interaction.response.send_message(
+                "⚠️ This YouTube channel is already added.",
+                ephemeral=True
+            )
 
         feed = feedparser.parse(
             f"https://www.youtube.com/feeds/videos.xml?channel_id={yt_channel_id}"
         )
 
         if not feed.entries:
-            return await ctx.reply("❌ Invalid YouTube channel ID.")
+            return await interaction.response.send_message(
+                "❌ Invalid YouTube channel ID.",
+                ephemeral=True
+            )
 
         latest = feed.entries[0]
         yt_channel_name = feed.feed.get("author", "Unknown Channel")
 
+        mention = mention_role.mention if mention_role else "@everyone"
+
         ytnotify_col.insert_one({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "discord_channel_id": channel.id,
             "yt_channel_id": yt_channel_id,
             "yt_channel_name": yt_channel_name,
             "last_video_id": latest.yt_videoid,
-            "mention": mention  # 🔥 STORE MENTION
+            "mention": mention
         })
 
         msg = format_yt_message(yt_channel_name, latest, mention)
         if msg:
             await channel.send(msg)
 
-        await ctx.reply(f"✅ `{yt_channel_name}` added → {channel.mention}")
+        embed = discord.Embed(
+            title="✅ YouTube Notification Added",
+            description=(
+                f"📺 **Channel:** {yt_channel_name}\n"
+                f"📢 **Discord:** {channel.mention}\n"
+                f"🔔 **Mention:** {mention}"
+            ),
+            color=discord.Color.green()
+        )
 
-    # ---------------- DELETE ---------------- #
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @commands.command(name="delytnotify")
-    @commands.has_permissions(administrator=True)
-    async def delytnotify(self, ctx, yt_channel_id: str = None):
-
-        if not yt_channel_id:
-            return await ctx.reply(
-                "❌ Usage: `!delytnotify UCxxxxxxxxxxxxxxxx`"
-            )
+    # ================= /ytnotify-remove =================
+    @app_commands.command(
+        name="ytnotify-remove",
+        description="Remove YouTube notification"
+    )
+    @app_commands.guild_only()
+    async def ytnotify_remove(
+        self,
+        interaction: discord.Interaction,
+        yt_channel_id: str
+    ):
+        if not await self.is_admin_or_owner(interaction):
+            return  # silent ignore
 
         result = ytnotify_col.find_one_and_delete({
-            "guild_id": ctx.guild.id,
+            "guild_id": interaction.guild.id,
             "yt_channel_id": yt_channel_id
         })
 
         if not result:
-            return await ctx.reply("❌ Channel not registered.")
+            return await interaction.response.send_message(
+                "❌ Channel not registered.",
+                ephemeral=True
+            )
 
-        await ctx.reply("🗑️ Notification removed.")
+        await interaction.response.send_message(
+            "🗑️ YouTube notification removed.",
+            ephemeral=True
+        )
 
-    # ---------------- LIST ---------------- #
-
-    @commands.command(name="listytnotify")
-    @commands.has_permissions(administrator=True)
-    async def listytnotify(self, ctx):
+    # ================= /ytnotify-list =================
+    @app_commands.command(
+        name="ytnotify-list",
+        description="List all YouTube notifications"
+    )
+    @app_commands.guild_only()
+    async def ytnotify_list(self, interaction: discord.Interaction):
+        if not await self.is_admin_or_owner(interaction):
+            return  # silent ignore
 
         data = list(ytnotify_col.find({
-            "guild_id": ctx.guild.id
+            "guild_id": interaction.guild.id
         }))
 
         if not data:
-            return await ctx.reply("ℹ️ No YouTube notifications set.")
-
-        msg = "**📺 YouTube Notifications:**\n"
-        for i, n in enumerate(data, 1):
-            msg += (
-                f"{i}. **{n['yt_channel_name']}**\n"
-                f" ↳ Discord: <#{n['discord_channel_id']}>\n"
-                f" ↳ YT ID: `{n['yt_channel_id']}`\n"
-                f" ↳ Mention: {n.get('mention', '@everyone')}\n"
+            return await interaction.response.send_message(
+                "ℹ️ No YouTube notifications set.",
+                ephemeral=True
             )
 
-        await ctx.reply(msg)
+        embed = discord.Embed(
+            title="📺 YouTube Notifications",
+            color=discord.Color.blurple()
+        )
 
-    # ---------------- LOOP ---------------- #
+        for i, n in enumerate(data, 1):
+            embed.add_field(
+                name=f"{i}. {n['yt_channel_name']}",
+                value=(
+                    f"📢 <#{n['discord_channel_id']}>\n"
+                    f"🆔 `{n['yt_channel_id']}`\n"
+                    f"🔔 {n.get('mention', '@everyone')}"
+                ),
+                inline=False
+            )
 
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # ================= LOOP =================
     @tasks.loop(minutes=CHECK_INTERVAL)
     async def check_feeds(self):
         data = list(ytnotify_col.find({}))
@@ -170,7 +196,6 @@ class YTNotify(commands.Cog):
             feed = feedparser.parse(
                 f"https://www.youtube.com/feeds/videos.xml?channel_id={entry['yt_channel_id']}"
             )
-
             if not feed.entries:
                 continue
 
@@ -196,6 +221,10 @@ class YTNotify(commands.Cog):
     async def before_loop(self):
         await self.bot.wait_until_ready()
 
+    # ----------------- GLOBAL CHECK -----------------
+    async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:
+        return await self.is_admin_or_owner(interaction)
 
-async def setup(bot):
+
+async def setup(bot: commands.Bot):
     await bot.add_cog(YTNotify(bot))

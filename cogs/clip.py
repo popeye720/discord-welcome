@@ -128,7 +128,7 @@ class Clip(commands.Cog):
             f"✅ **Clip System Enabled**\n"
             f"🎥 Stream ID: `{video_id}`\n"
             f"📍 Channel: {channel.mention}\n\n"
-            f"Use `/clip sync HH:MM:SS` (or `/sync HH:MM:SS`) if needed.",
+            f"Use `/clip sync HH:MM:SS` if needed.",
             ephemeral=True
         )
 
@@ -195,29 +195,6 @@ class Clip(commands.Cog):
             f"🟢 Clip system **ON**\n🎥 Stream ID: `{session['video_id']}`",
             ephemeral=True
         )
-
-    # ========================= /sync (ALIAS) =========================
-    @app_commands.command(name="sync", description="(Alias) Sync clip timestamp base (HH:MM:SS) for /clip system")
-    @app_commands.guild_only()
-    @app_commands.describe(time_str="Format: HH:MM:SS (example: 01:23:45)")
-    async def sync_alias(self, interaction: discord.Interaction, time_str: str):
-        # same logic as /clip sync
-        if await self.deny_silent(interaction):
-            return
-
-        guild = interaction.guild
-        assert guild is not None
-
-        session = self.sessions.get(guild.id)
-        if not session:
-            return await interaction.response.send_message("⚠️ Clip system not running.", ephemeral=True)
-
-        try:
-            session["sync_base"] = self.hms_to_seconds(time_str)
-            session["sync_time"] = time.time()
-            await interaction.response.send_message(f"✅ Synced at `{time_str}`", ephemeral=True)
-        except Exception:
-            await interaction.response.send_message("❌ Invalid format. Use `HH:MM:SS`", ephemeral=True)
 
     # ================= CHAT LISTENER =================
     async def listen_chat(self, guild_id: int):
@@ -313,7 +290,6 @@ class Clip(commands.Cog):
             pass
         except Exception:
             # keep it silent (no leak), but you can print for logs
-            # print("Clip listener error:", traceback.format_exc())
             pass
 
     # ================= CLEANUP =================

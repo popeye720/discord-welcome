@@ -216,7 +216,7 @@ class TicketSystem(commands.Cog):
             color=discord.Color.green(),
             timestamp=datetime.datetime.utcnow()
         )
-        embed.set_footer(text="Ticket System • Panel")
+        embed.set_footer(text="TEJAS – The Ultimate Multi-Purpose Discord Bot")
 
         await channel.send(embed=embed, view=TicketButton())
 

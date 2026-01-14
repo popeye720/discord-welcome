@@ -7,7 +7,7 @@ from database.models import freegames_col
 import asyncio
 import time
 
-CLEANUP_AFTER_SECONDS = 60 * 60 * 48  # 2 DAYS
+CLEANUP_AFTER_SECONDS = 60 * 60 * 24 * 7  # 7 DAYS
 
 # ================= COG =================
 class FreeGames(commands.Cog):

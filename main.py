@@ -48,6 +48,29 @@ async def on_ready():
     from cogs.forms import UserFormView
     bot.add_view(UserFormView(guild_id=0))
 
+    try:
+        from cogs.modal import ModalPanelView
+        from database.models import modal_col
+
+        count = 0
+        for modal in modal_col.find({}):
+            modal_id = modal.get("modal_id")
+            message_id = modal.get("message_id")
+
+            if modal_id and message_id:
+                try:
+                    bot.add_view(
+                        ModalPanelView(modal_id),
+                        message_id=int(message_id)
+                    )
+                    count += 1
+                except Exception as e:
+                    print("Modal view bind failed:", e)
+
+        print(f"✅ Modal persistent views registered: {count}")
+
+    except Exception as e:
+        print("❌ Modal persistent register error:", e)
 
 @bot.event
 async def on_guild_join(guild):
@@ -74,7 +97,6 @@ async def main():
         await bot.load_extension("cogs.clip")
         await bot.load_extension("cogs.antispam")
         await bot.load_extension("cogs.guild_manager")
-        await bot.load_extension("cogs.moderation")
         await bot.load_extension("cogs.ytnotify")
         await bot.load_extension("cogs.profile")
         await bot.load_extension("cogs.fungames")
@@ -87,6 +109,7 @@ async def main():
         await bot.load_extension("cogs.privatevc")
         await bot.load_extension("cogs.feedback")
         await bot.load_extension("cogs.chatpolling")
+        await bot.load_extension("cogs.modal")
         
         # ================= RUN BOT =================
         await bot.start(TOKEN)

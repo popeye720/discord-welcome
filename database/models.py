@@ -34,7 +34,14 @@ form_responses_col = db["form_responses"]
 forms_col.create_index("guild_id", unique=True)
 form_responses_col.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
 
+modal_col = db["modals"]
+modal_responses_col = db["modal_responses"]
 
+modal_col.create_index("guild_id", unique=True)
+modal_responses_col.create_index(
+    [("guild_id", 1), ("modal_id", 1), ("user_id", 1)],
+    unique=True
+)
 
 antilinks_col = db["anti_links"]
 antilinks_col.create_index("guild_id", unique=True)
@@ -70,3 +77,4 @@ blacklisted_guilds_col = db["blacklisted_guilds"]
 blacklisted_guilds_col.create_index("guild_id", unique=True)
 
 feedback_col = db["feedbacks"]
+

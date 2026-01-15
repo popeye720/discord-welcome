@@ -177,20 +177,20 @@ class Forms(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="setform", description="Create a registration form (modal)")
-    async def setform(self, interaction: discord.Interaction):
+    @app_commands.command(name="registration-form", description="Create a registration form")
+    async def registration_form(self, interaction: discord.Interaction):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)
         await interaction.response.send_modal(AdminFormModal())
 
     @app_commands.command(
-        name="closeform",
+        name="close-registration-form",
         description="Close the active form. `delete_all=True` will delete all responses along with the form."
     )
     @app_commands.describe(
         delete_all="Whether to delete all form responses (True = delete all, False = keep responses)"
     )
-    async def closeform(self, interaction: discord.Interaction, delete_all: bool = False):
+    async def close_registration_form(self, interaction: discord.Interaction, delete_all: bool = False):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)
 
@@ -217,7 +217,7 @@ class Forms(commands.Cog):
 
         await interaction.response.send_message("🗑️ Form closed. Responses kept.", ephemeral=True)
 
-    @app_commands.command(name="formresponses", description="View all form responses")
+    @app_commands.command(name="registration-form-responses", description="View all form responses")
     async def formresponses(self, interaction: discord.Interaction):
         if not (interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
             return await interaction.response.send_message("❌ Only Admin or Owner can use this command.", ephemeral=True)

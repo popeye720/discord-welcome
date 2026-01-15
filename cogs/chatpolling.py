@@ -9,6 +9,10 @@ import time
 from collections import deque
 from typing import Deque, Dict, Tuple, Optional
 
+# ✅ Centralized permission + safe reply
+from utils.permissions import is_admin_or_guild_owner
+from utils.interaction import safe_ephemeral
+
 
 # ===================== TUNABLES (SAFE DEFAULTS) =====================
 
@@ -42,25 +46,14 @@ class ChatPoll(commands.Cog):
 
     # ----------------- PERMISSION (ADMIN / OWNER) -----------------
     def can_manage(self, interaction: discord.Interaction) -> bool:
-        guild = interaction.guild
-        if not guild:
-            return False
-        if interaction.user.id == guild.owner_id:
-            return True
-        if getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator:
-            return True
-        return False
+        # ✅ Centralized
+        return is_admin_or_guild_owner(interaction)
 
     async def deny_silent(self, interaction: discord.Interaction) -> bool:
         if self.can_manage(interaction):
             return False
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send("❌ Admin / Owner only.", ephemeral=True)
-            else:
-                await interaction.response.send_message("❌ Admin / Owner only.", ephemeral=True)
-        except Exception:
-            pass
+        # ✅ Centralized safe ephemeral
+        await safe_ephemeral(interaction, "❌ Admin / Owner only.")
         return True
 
     # ----------------- START GLOBAL FLUSHER SAFELY -----------------

@@ -86,6 +86,7 @@ async def main():
         await bot.load_extension("cogs.autorenamer")
         await bot.load_extension("cogs.privatevc")
         await bot.load_extension("cogs.feedback")
+        await bot.load_extension("cogs.chatpolling")
         
         # ================= RUN BOT =================
         await bot.start(TOKEN)

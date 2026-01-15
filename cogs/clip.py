@@ -9,8 +9,13 @@ import time
 from datetime import datetime, timezone
 from collections import deque
 
+# ✅ CENTRALIZED UTILS
+from utils.permissions import is_admin_or_guild_owner
+from utils.interaction import safe_ephemeral
+
 
 MAX_CLIPS_PER_MINUTE = 1
+CLIP_OFFSET_SECONDS = 40  # ✅ NEW: make clip link 40 seconds earlier
 
 
 class Clip(commands.Cog):
@@ -20,14 +25,7 @@ class Clip(commands.Cog):
 
     # ----------------- PERMISSION (ADMIN / OWNER) -----------------
     def can_manage(self, interaction: discord.Interaction) -> bool:
-        guild = interaction.guild
-        if not guild:
-            return False
-        if interaction.user.id == guild.owner_id:
-            return True
-        if getattr(interaction.user, "guild_permissions", None) and interaction.user.guild_permissions.administrator:
-            return True
-        return False
+        return is_admin_or_guild_owner(interaction)
 
     async def deny_silent(self, interaction: discord.Interaction) -> bool:
         """
@@ -36,13 +34,8 @@ class Clip(commands.Cog):
         """
         if self.can_manage(interaction):
             return False
-        try:
-            if interaction.response.is_done():
-                await interaction.followup.send("❌ Admin / Owner only.", ephemeral=True)
-            else:
-                await interaction.response.send_message("❌ Admin / Owner only.", ephemeral=True)
-        except Exception:
-            pass
+
+        await safe_ephemeral(interaction, "❌ Admin / Owner only.")
         return True
 
     # ----------------- TIME HELPERS -----------------
@@ -84,30 +77,32 @@ class Clip(commands.Cog):
         assert guild is not None
 
         if guild.id in self.sessions:
-            return await interaction.response.send_message(
-                "⚠️ Clip system already running in this server.",
-                ephemeral=True
-            )
+            await safe_ephemeral(interaction, "⚠️ Clip system already running in this server.")
+            return
 
         # Bot permission check in target channel
         me = guild.me or guild.get_member(self.bot.user.id)
         if not me:
-            return await interaction.response.send_message("❌ Bot member not found in guild.", ephemeral=True)
+            await safe_ephemeral(interaction, "❌ Bot member not found in guild.")
+            return
 
         perms = channel.permissions_for(me)
         if not perms.send_messages:
-            return await interaction.response.send_message("❌ I cannot send messages in that channel.", ephemeral=True)
+            await safe_ephemeral(interaction, "❌ I cannot send messages in that channel.")
+            return
 
         video_id = self.extract_video_id(stream_url)
         if not video_id:
-            return await interaction.response.send_message("❌ Invalid YouTube Live URL.", ephemeral=True)
+            await safe_ephemeral(interaction, "❌ Invalid YouTube Live URL.")
+            return
 
-        await interaction.response.send_message("🔄 Enabling clip system...", ephemeral=True)
+        await safe_ephemeral(interaction, "🔄 Enabling clip system...")
 
         try:
             chat = pytchat.create(video_id=video_id)
         except Exception as e:
-            return await interaction.followup.send(f"❌ Failed to start pytchat: `{type(e).__name__}`", ephemeral=True)
+            await safe_ephemeral(interaction, f"❌ Failed to start pytchat: `{type(e).__name__}`")
+            return
 
         session = {
             "video_id": video_id,
@@ -124,12 +119,12 @@ class Clip(commands.Cog):
         session["task"] = task
         self.sessions[guild.id] = session
 
-        await interaction.followup.send(
+        await safe_ephemeral(
+            interaction,
             f"✅ **Clip System Enabled**\n"
             f"🎥 Stream ID: `{video_id}`\n"
             f"📍 Channel: {channel.mention}\n\n"
-            f"Use `/clip sync HH:MM:SS` if needed.",
-            ephemeral=True
+            f"Use `/clip sync HH:MM:SS` if needed."
         )
 
     # ========================= /clip off =========================
@@ -144,7 +139,8 @@ class Clip(commands.Cog):
 
         session = self.sessions.pop(guild.id, None)
         if not session:
-            return await interaction.response.send_message("⚠️ Clip system is not running.", ephemeral=True)
+            await safe_ephemeral(interaction, "⚠️ Clip system is not running.")
+            return
 
         try:
             session["task"].cancel()
@@ -156,7 +152,7 @@ class Clip(commands.Cog):
         except Exception:
             pass
 
-        await interaction.response.send_message("🛑 Clip system disabled.", ephemeral=True)
+        await safe_ephemeral(interaction, "🛑 Clip system disabled.")
 
     # ========================= /clip sync =========================
     @clip.command(name="sync", description="Sync timestamp base (HH:MM:SS) for accurate clip time")
@@ -171,14 +167,15 @@ class Clip(commands.Cog):
 
         session = self.sessions.get(guild.id)
         if not session:
-            return await interaction.response.send_message("⚠️ Clip system not running.", ephemeral=True)
+            await safe_ephemeral(interaction, "⚠️ Clip system not running.")
+            return
 
         try:
             session["sync_base"] = self.hms_to_seconds(time_str)
             session["sync_time"] = time.time()
-            await interaction.response.send_message(f"✅ Synced at `{time_str}`", ephemeral=True)
+            await safe_ephemeral(interaction, f"✅ Synced at `{time_str}`")
         except Exception:
-            await interaction.response.send_message("❌ Invalid format. Use `HH:MM:SS`", ephemeral=True)
+            await safe_ephemeral(interaction, "❌ Invalid format. Use `HH:MM:SS`")
 
     # ========================= /clip status =========================
     @clip.command(name="status", description="Check clip system status")
@@ -189,11 +186,12 @@ class Clip(commands.Cog):
 
         session = self.sessions.get(guild.id)
         if not session:
-            return await interaction.response.send_message("🔴 Clip system **OFF**", ephemeral=True)
+            await safe_ephemeral(interaction, "🔴 Clip system **OFF**")
+            return
 
-        await interaction.response.send_message(
-            f"🟢 Clip system **ON**\n🎥 Stream ID: `{session['video_id']}`",
-            ephemeral=True
+        await safe_ephemeral(
+            interaction,
+            f"🟢 Clip system **ON**\n🎥 Stream ID: `{session['video_id']}`"
         )
 
     # ================= CHAT LISTENER =================
@@ -246,8 +244,11 @@ class Clip(commands.Cog):
                     else:
                         sec = int(now - session["script_start"])
 
-                    ts = self.seconds_to_hms(sec)
-                    url = f"https://www.youtube.com/watch?v={session['video_id']}&t={sec}s"
+                    # ✅ NEW: go 40 seconds back, but never below 0
+                    clip_sec = max(0, sec - CLIP_OFFSET_SECONDS)
+
+                    ts = self.seconds_to_hms(clip_sec)
+                    url = f"https://www.youtube.com/watch?v={session['video_id']}&t={clip_sec}s"
 
                     guild = self.bot.get_guild(guild_id)
                     if not guild:

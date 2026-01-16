@@ -7,7 +7,7 @@ reactionrole_col = db["reaction_roles"]
 autotrigger_col = db["auto_triggers"]
 greetings_col = db["greetings"] 
 autorole_col = db["auto_roles"]
-
+autoping_col = db["autoping_rules"]
 freegames_col = db["free_games"]
 
 ytnotify_col = db["ytnotify"]

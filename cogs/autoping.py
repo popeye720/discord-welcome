@@ -3,8 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
 
-from database.mongo import db  # <-- your existing pattern
-autoping_col = db["autoping_rules"]
+
 
 
 class AutoPing(commands.Cog):

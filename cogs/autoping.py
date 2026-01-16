@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from datetime import datetime
+from database.mongo import db
 from database.models import autoping_rules
 
 

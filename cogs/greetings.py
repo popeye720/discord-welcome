@@ -66,7 +66,7 @@ class Greetings(commands.Cog):
         if not channel:
             return await interaction.response.send_message("❌ Saved channel not found.", ephemeral=True)
 
-        await channel.send(f"{interaction.user.mention} welcome to the server")
+        await channel.send(f"{interaction.user.mention} welcome to the server🔥")
         await interaction.response.send_message("✅ Test welcome sent.", ephemeral=True)
 
     # ----------------- AUTO WELCOME ON JOIN -----------------
@@ -80,7 +80,7 @@ class Greetings(commands.Cog):
         if not channel:
             return
 
-        await channel.send(f"{member.mention} welcome to the server")
+        await channel.send(f"{member.mention} welcome to the server🔥")
 
     # ----------------- GLOBAL CHECK -----------------
     async def cog_app_command_check(self, interaction: discord.Interaction) -> bool:

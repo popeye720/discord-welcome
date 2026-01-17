@@ -111,6 +111,8 @@ async def main():
         await bot.load_extension("cogs.chatpolling")
         await bot.load_extension("cogs.modal")
         await bot.load_extension("cogs.autoping")
+        await bot.load_extension("cogs.music")
+
         
         # ================= RUN BOT =================
         await bot.start(TOKEN)

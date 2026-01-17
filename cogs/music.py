@@ -154,55 +154,76 @@ class Music(commands.Cog):
         except:
             pass
 
-    async def _preflight(self, base_url: str, password: str):
+
+    async def _preflight(self, base_url: str, password: str) -> int:
         url = base_url.rstrip("/") + "/v4/info"
         try:
             timeout = aiohttp.ClientTimeout(total=8)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(
-                    url,
-                    headers={"Authorization": password}
-                ) as r:
+                async with session.get(url, headers={"Authorization": password}) as r:
                     text = await r.text()
                     print(f"✅ Lavalink preflight {r.status} {url}")
                     if r.status != 200:
                         print("❌ Preflight body:", text[:400])
+                    return r.status
         except Exception as e:
             print("❌ Preflight failed:", type(e).__name__, repr(e))
+            return 0
 
-            
     async def connect_node_from_env(self):
         if self._node_ready.is_set():
             return
 
-        uri = os.getenv("LAVALINK_URI", "").strip()
+        raw = os.getenv("LAVALINK_URI", "").strip()
         password = os.getenv("LAVALINK_PASSWORD", "").strip()
 
-        if not uri or not password:
+        if not raw or not password:
             raise RuntimeError("Missing ENV: LAVALINK_URI or LAVALINK_PASSWORD")
 
-        # normalize URI for wavelink
-        if uri.startswith("wss://"):
-            uri = "https://" + uri[len("wss://"):]
-        elif uri.startswith("ws://"):
-            uri = "http://" + uri[len("ws://"):]
-        elif not (uri.startswith("http://") or uri.startswith("https://")):
-            uri = "https://" + uri
+        # HTTP url for preflight
+        if raw.startswith("wss://"):
+            http_url = "https://" + raw[len("wss://"):]
+        elif raw.startswith("ws://"):
+            http_url = "http://" + raw[len("ws://"):]
+        elif raw.startswith(("https://", "http://")):
+            http_url = raw
+        else:
+            http_url = "https://" + raw
 
-        print("🔌 Connecting Lavalink:", uri)
+        # WS url for node
+        if raw.startswith("https://"):
+            ws_url = "wss://" + raw[len("https://"):]
+        elif raw.startswith("http://"):
+            ws_url = "ws://" + raw[len("http://"):]
+        elif raw.startswith(("wss://", "ws://")):
+            ws_url = raw
+        else:
+            ws_url = "wss://" + raw
 
-        # ✅ preflight so we see real issue (401/502/timeout)
-        await self._preflight(uri, password)
+        print("🔌 Connecting Lavalink (HTTP preflight):", http_url)
+        status = await self._preflight(http_url, password)
+
+        if status != 200:
+            print("❌ Skipping WS connect because preflight is not OK.")
+            return
+
+        print("🔌 Connecting Lavalink (WS node):", ws_url)
 
         try:
-            node = wavelink.Node(uri=uri, password=password)
+            node = wavelink.Node(
+                uri=ws_url,
+                password=password,
+                identifier="main"   # ✅ helps debugging / stability
+            )
             await wavelink.Pool.connect(nodes=[node], client=self.bot)
-            print("✅ Lavalink node connected:", uri)
+            print("✅ Lavalink node connected:", ws_url)
             self._node_ready.set()
         except Exception as e:
             print("❌ Lavalink connect failed:", type(e).__name__, repr(e))
             traceback.print_exc()
             raise
+
+
 
 
     async def ensure_voice(self, interaction: discord.Interaction) -> wavelink.Player | None:

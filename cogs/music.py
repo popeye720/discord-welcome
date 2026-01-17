@@ -5,6 +5,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import wavelink
+import aiohttp
 
 # ✅ BRAND SYSTEM (SAME)
 BRAND_URL = "https://discord.gg/DVqvtsYNy7"
@@ -153,6 +154,23 @@ class Music(commands.Cog):
         except:
             pass
 
+    async def _preflight(self, base_url: str, password: str):
+        url = base_url.rstrip("/") + "/v4/info"
+        try:
+            timeout = aiohttp.ClientTimeout(total=8)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(
+                    url,
+                    headers={"Authorization": password}
+                ) as r:
+                    text = await r.text()
+                    print(f"✅ Lavalink preflight {r.status} {url}")
+                    if r.status != 200:
+                        print("❌ Preflight body:", text[:400])
+        except Exception as e:
+            print("❌ Preflight failed:", type(e).__name__, repr(e))
+
+            
     async def connect_node_from_env(self):
         if self._node_ready.is_set():
             return
@@ -171,15 +189,21 @@ class Music(commands.Cog):
         elif not (uri.startswith("http://") or uri.startswith("https://")):
             uri = "https://" + uri
 
+        print("🔌 Connecting Lavalink:", uri)
+
+        # ✅ preflight so we see real issue (401/502/timeout)
+        await self._preflight(uri, password)
+
         try:
             node = wavelink.Node(uri=uri, password=password)
-            await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=None)
+            await wavelink.Pool.connect(nodes=[node], client=self.bot)
             print("✅ Lavalink node connected:", uri)
             self._node_ready.set()
         except Exception as e:
-            print("❌ Lavalink connect failed:", repr(e))
+            print("❌ Lavalink connect failed:", type(e).__name__, repr(e))
             traceback.print_exc()
             raise
+
 
     async def ensure_voice(self, interaction: discord.Interaction) -> wavelink.Player | None:
         guild = interaction.guild

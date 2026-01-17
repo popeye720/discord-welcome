@@ -153,24 +153,32 @@ class Music(commands.Cog):
         except:
             pass
 
-    # ✅ Railway compatible: ENV based Lavalink
     async def connect_node_from_env(self):
         if self._node_ready.is_set():
             return
 
-        uri = os.getenv("LAVALINK_URI")
-        password = os.getenv("LAVALINK_PASSWORD")
+        uri = os.getenv("LAVALINK_URI", "").strip()
+        password = os.getenv("LAVALINK_PASSWORD", "").strip()
 
         if not uri or not password:
             raise RuntimeError("Missing ENV: LAVALINK_URI or LAVALINK_PASSWORD")
 
+        # normalize URI for wavelink
+        if uri.startswith("wss://"):
+            uri = "https://" + uri[len("wss://"):]
+        elif uri.startswith("ws://"):
+            uri = "http://" + uri[len("ws://"):]
+        elif not (uri.startswith("http://") or uri.startswith("https://")):
+            uri = "https://" + uri
+
         try:
             node = wavelink.Node(uri=uri, password=password)
-            await wavelink.Pool.connect(nodes=[node], client=self.bot)
+            await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=None)
             print("✅ Lavalink node connected:", uri)
             self._node_ready.set()
         except Exception as e:
-            print("❌ Lavalink connect failed:", e)
+            print("❌ Lavalink connect failed:", repr(e))
+            traceback.print_exc()
             raise
 
     async def ensure_voice(self, interaction: discord.Interaction) -> wavelink.Player | None:

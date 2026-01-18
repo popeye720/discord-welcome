@@ -288,8 +288,8 @@ class Music(commands.Cog):
         if not t:
             embed.description = "No track is playing."
             return embed
-
-
+        
+        embed.add_field(name="Now Playing",value=f"[{t.title}]({BRAND_URL})",inline=False)
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)

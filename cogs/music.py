@@ -60,6 +60,9 @@ class GuildMusicState:
         # ✅ only 8D filter remains
         self.eightd_enabled: bool = False
 
+        # ✅ loop current song
+        self.loop_enabled: bool = False
+
         # panel storage (for current playing panel only)
         self.panel_channel_id: Optional[int] = None
         self.panel_message_id: Optional[int] = None
@@ -112,7 +115,7 @@ class MusicPanelView(discord.ui.View):
 
         return True
 
-    # ✅ requested buttons: play pause skip stop 8d
+    # ✅ requested buttons: play pause skip stop 8d + loop
     @discord.ui.button(label="▶️ Play", style=discord.ButtonStyle.secondary, custom_id="music_play")
     async def btn_play(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog._btn_play(interaction)
@@ -132,6 +135,10 @@ class MusicPanelView(discord.ui.View):
     @discord.ui.button(label="♾️ 8D", style=discord.ButtonStyle.secondary, custom_id="music_8d")
     async def btn_8d(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog._btn_8d(interaction)
+
+    @discord.ui.button(label="🔁 Loop", style=discord.ButtonStyle.secondary, custom_id="music_loop")
+    async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._btn_loop(interaction)
 
 
 class Music(commands.Cog):
@@ -282,6 +289,7 @@ class Music(commands.Cog):
         if not t:
             embed.description = "No track is playing."
             embed.add_field(name="8D ♾️", value="On" if st.eightd_enabled else "Off", inline=True)
+            embed.add_field(name="Loop 🔁", value="On" if st.loop_enabled else "Off", inline=True)
             return embed
 
         embed.add_field(name=" ", value=f"[{t.title}]({BRAND_URL})", inline=False)
@@ -289,6 +297,7 @@ class Music(commands.Cog):
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
         embed.add_field(name="8D ♾️", value="On" if st.eightd_enabled else "Off", inline=True)
+        embed.add_field(name="Loop 🔁", value="On" if st.loop_enabled else "Off", inline=True)
 
         q_items = list(st.queue._queue)
         if q_items:
@@ -380,6 +389,7 @@ class Music(commands.Cog):
             if st.stopped:
                 st.stopped = False
                 st.current = None
+                st.loop_enabled = False  # ✅ stop clears loop
                 while not st.queue.empty():
                     try:
                         st.queue.get_nowait()
@@ -406,35 +416,48 @@ class Music(commands.Cog):
                     return
                 continue
 
-            st.current = track
-            try:
-                await player.play(track.playable)
-            except Exception as e:
-                print("❌ player.play failed:", e)
-                traceback.print_exc()
-                st.current = None
-                continue
-
-            await asyncio.sleep(0.25)
-            await self.apply_filters(guild)
-
-            try:
-                await self.refresh_panel(guild, keep_buttons=True)
-            except:
-                pass
-
-            while getattr(player, "playing", False) or getattr(player, "paused", False):
-                if st.stopped:
-                    try:
-                        await player.stop()
-                    except:
-                        pass
+            # ✅ Play track, and if loop enabled -> replay same track until loop off
+            while True:
+                st.current = track
+                try:
+                    await player.play(track.playable)
+                except Exception as e:
+                    print("❌ player.play failed:", e)
+                    traceback.print_exc()
+                    st.current = None
                     break
-                await asyncio.sleep(0.75)
 
-            st.current = None
+                await asyncio.sleep(0.25)
+                await self.apply_filters(guild)
 
-            if st.queue.empty() and not st.stopped:
+                try:
+                    await self.refresh_panel(guild, keep_buttons=True)
+                except:
+                    pass
+
+                while getattr(player, "playing", False) or getattr(player, "paused", False):
+                    if st.stopped:
+                        try:
+                            await player.stop()
+                        except:
+                            pass
+                        break
+                    await asyncio.sleep(0.75)
+
+                if st.stopped:
+                    st.current = None
+                    break
+
+                # ✅ if loop ON => replay same song (current song loop)
+                if st.loop_enabled:
+                    continue
+
+                # ✅ loop OFF => move on
+                st.current = None
+                break
+
+            # after a song ends: if no more in queue => queue ended flow
+            if st.queue.empty() and not st.stopped and not st.loop_enabled:
                 msg = await self.get_panel_message(guild)
                 if msg:
                     try:
@@ -506,6 +529,10 @@ class Music(commands.Cog):
 
         self._hit_cooldown(guild.id)
 
+        # ✅ skip should move next => disable loop
+        st = self.get_state(guild.id)
+        st.loop_enabled = False
+
         player = self.get_player(guild)
         if not player or not getattr(player, "connected", False):
             return await interaction.followup.send("Not connected.", ephemeral=True)
@@ -519,7 +546,6 @@ class Music(commands.Cog):
         else:
             await interaction.followup.send("Nothing to skip.", ephemeral=True)
 
-        st = self.get_state(guild.id)
         if st.queue.empty() and st.current is None:
             msg = await self.get_panel_message(guild)
             if msg:
@@ -541,6 +567,7 @@ class Music(commands.Cog):
 
         st = self.get_state(guild.id)
         st.stopped = True
+        st.loop_enabled = False  # ✅ stop clears loop
 
         player = self.get_player(guild)
         if player and getattr(player, "connected", False):
@@ -584,6 +611,20 @@ class Music(commands.Cog):
         await self.apply_filters(guild)
 
         await interaction.followup.send(f"♾️ 8D: {'On' if st.eightd_enabled else 'Off'}", ephemeral=True)
+        await self.refresh_panel(guild, keep_buttons=True)
+
+    async def _btn_loop(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        if not guild:
+            return
+
+        self._hit_cooldown(guild.id)
+
+        st = self.get_state(guild.id)
+        st.loop_enabled = not st.loop_enabled
+
+        await interaction.followup.send(f"🔁 Loop: {'On' if st.loop_enabled else 'Off'}", ephemeral=True)
         await self.refresh_panel(guild, keep_buttons=True)
 
     # ---------- SLASH COMMANDS (ONLY /play and /stop) ----------
@@ -656,6 +697,7 @@ class Music(commands.Cog):
                 await interaction.edit_original_response(content="Started.")
             else:
                 await interaction.edit_original_response(content=f"Queued: {st.queue.qsize()} track(s).")
+
             try:
                 await self.refresh_panel(guild, keep_buttons=True)
             except:

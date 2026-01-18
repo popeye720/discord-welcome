@@ -14,7 +14,6 @@ intents.presences = True
 # ================= CUSTOM BOT =================
 class MyBot(commands.Bot):
     async def setup_hook(self):
-        # 🔥 CORRECT PLACE FOR SLASH SYNC
         synced = await self.tree.sync()
         print(f"✅ Global slash commands synced: {len(synced)}")
 
@@ -35,16 +34,13 @@ async def on_ready():
     print(f"✅ Bot logged in as {bot.user}")
     print(f"🌐 Connected to {len(bot.guilds)} guilds")
 
-    # 🔥 REGISTER PERSISTENT VIEWS (Ticket System)
     from cogs.ticket import TicketButton, CloseTicketView
     bot.add_view(TicketButton())
     bot.add_view(CloseTicketView())
 
-    # 🔥 REGISTER GUILD MANAGER PERSISTENT VIEW
     from cogs.guild_manager import GuildActionView
     bot.add_view(GuildActionView(bot, guild_id=0))
 
-    # 🔥 REGISTER FORMS PERSISTENT VIEW
     from cogs.forms import UserFormView
     bot.add_view(UserFormView(guild_id=0))
 
@@ -71,6 +67,7 @@ async def on_ready():
 
     except Exception as e:
         print("❌ Modal persistent register error:", e)
+
 
 @bot.event
 async def on_guild_join(guild):
@@ -111,10 +108,19 @@ async def main():
         await bot.load_extension("cogs.chatpolling")
         await bot.load_extension("cogs.modal")
         await bot.load_extension("cogs.autoping")
-        #await bot.load_extension("cogs.music")
 
-        
-        # ================= RUN BOT =================
+        LL_URI = (os.getenv("LAVALINK_URI") or "").strip()
+        LL_PASS = (os.getenv("LAVALINK_PASSWORD") or "").strip()
+
+        if LL_URI and LL_PASS:
+            try:
+                await bot.load_extension("cogs.music")
+                print("✅ Music cog loaded")
+            except Exception as e:
+                print("❌ Music cog failed to load (skipping):", e)
+        else:
+            print("⚠️ Music cog skipped: LAVALINK_URI / LAVALINK_PASSWORD not set")
+
         await bot.start(TOKEN)
 
 

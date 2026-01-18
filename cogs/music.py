@@ -655,7 +655,7 @@ class Music(commands.Cog):
 
                 await interaction.edit_original_response(content="Started.")
             else:
-                await interaction.edit_original_response(content=f"Queued: {len(playables)} track(s).")
+                await interaction.edit_original_response(content=f"Queued: {st.queue.qsize()} track(s).")
             try:
                 await self.refresh_panel(guild, keep_buttons=True)
             except:

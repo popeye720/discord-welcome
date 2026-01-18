@@ -287,9 +287,8 @@ class Music(commands.Cog):
         t = st.current
         if not t:
             embed.description = "No track is playing."
-            return embed
-        
-        embed.add_field(name="Now Playing",value=f"[{t.title}]({BRAND_URL})",inline=False)
+            return embed     
+        embed.description = f"🎶 **[{t.title}]({BRAND_URL})**"
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
@@ -452,8 +451,16 @@ class Music(commands.Cog):
                         pass
 
                 await self.post_queue_ended_new_embed(guild)
+                await asyncio.sleep(60)
+                if not st.queue.empty() or getattr(player, "playing", False) or getattr(player, "paused", False):
+                    continue
+                try:
+                    await player.disconnect()
+                except:
+                    pass
+                st.current = None
                 return
-
+                
     # ---------- buttons ----------
     async def _btn_play(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

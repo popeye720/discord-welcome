@@ -4,6 +4,7 @@ import json
 import time
 import traceback
 import os
+from turtle import st
 from typing import Optional
 
 import discord
@@ -115,7 +116,6 @@ class MusicPanelView(discord.ui.View):
 
         return True
 
-    # ✅ requested buttons: play pause skip stop 8d + loop
     @discord.ui.button(label="▶️ Play", style=discord.ButtonStyle.secondary, custom_id="music_play")
     async def btn_play(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog._btn_play(interaction)
@@ -288,27 +288,46 @@ class Music(commands.Cog):
         t = st.current
         if not t:
             embed.description = "No track is playing."
-            embed.add_field(name="8D ♾️", value="On" if st.eightd_enabled else "Off", inline=True)
-            embed.add_field(name="Loop 🔁", value="On" if st.loop_enabled else "Off", inline=True)
             return embed
 
-        embed.add_field(name=" ", value=f"[{t.title}]({BRAND_URL})", inline=False)
+    # Song title
+        embed.add_field(
+            name="Now Playing",
+            value=f"[{t.title}]({BRAND_URL})",
+            inline=False
+    )
+
+    # Row 1
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
-        embed.add_field(name="8D ♾️", value="On" if st.eightd_enabled else "Off", inline=True)
-        embed.add_field(name="Loop 🔁", value="On" if st.loop_enabled else "Off", inline=True)
 
-        q_items = list(st.queue._queue)
-        if q_items:
-            preview = "\n".join(
-                [f"{i+1}. {x.title} ({format_duration_ms(x.duration_ms)})" for i, x in enumerate(q_items[:5])]
-            )
-            embed.add_field(name="Queue", value=preview, inline=False)
+    # Row 2
+        embed.add_field(
+            name="8D",
+            value="On" if st.eightd_enabled else "Off",
+            inline=True
+    )
+
+        embed.add_field(
+            name="Loop",
+            value="On" if getattr(st, "loop_enabled", False) else "Off",
+            inline=True
+        )
+        if not st.queue.empty():
+            embed.add_field(
+                name="Queue",
+                value=f"{st.queue.qsize()} track(s)",
+                inline=True
+        )
         else:
-            embed.add_field(name="Queue", value="(empty)", inline=False)
-
+            embed.add_field(
+                name="Queue",
+                value="(empty)",
+                inline=True
+            )
         return embed
+
 
     def build_queue_ended_embed(self, guild: discord.Guild) -> discord.Embed:
         embed = discord.Embed(

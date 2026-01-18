@@ -4,7 +4,6 @@ import json
 import time
 import traceback
 import os
-from turtle import st
 from typing import Optional
 
 import discord

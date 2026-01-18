@@ -289,44 +289,21 @@ class Music(commands.Cog):
             embed.description = "No track is playing."
             return embed
 
-    # Song title
         embed.add_field(
             name="Now Playing",
             value=f"[{t.title}]({BRAND_URL})",
             inline=False
-    )
+        )
 
-    # Row 1
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
 
-    # Row 2
-        embed.add_field(
-            name="8D",
-            value="On" if st.eightd_enabled else "Off",
-            inline=True
-    )
+        embed.add_field(name="8D", value="On" if st.eightd_enabled else "Off", inline=True)
+        embed.add_field(name="Loop", value="On" if getattr(st, "loop_enabled", False) else "Off", inline=True)
+        embed.add_field(name="Queue", value=f"{st.queue.qsize()} track(s)" if not st.queue.empty() else "(empty)", inline=True)
 
-        embed.add_field(
-            name="Loop",
-            value="On" if getattr(st, "loop_enabled", False) else "Off",
-            inline=True
-        )
-        if not st.queue.empty():
-            embed.add_field(
-                name="Queue",
-                value=f"{st.queue.qsize()} track(s)",
-                inline=True
-        )
-        else:
-            embed.add_field(
-                name="Queue",
-                value="(empty)",
-                inline=True
-            )
         return embed
-
 
     def build_queue_ended_embed(self, guild: discord.Guild) -> discord.Embed:
         embed = discord.Embed(
@@ -407,7 +384,7 @@ class Music(commands.Cog):
             if st.stopped:
                 st.stopped = False
                 st.current = None
-                st.loop_enabled = False  # ✅ stop clears loop
+                st.loop_enabled = False
                 while not st.queue.empty():
                     try:
                         st.queue.get_nowait()
@@ -434,7 +411,6 @@ class Music(commands.Cog):
                     return
                 continue
 
-            # ✅ Play track, and if loop enabled -> replay same track until loop off
             while True:
                 st.current = track
                 try:
@@ -466,15 +442,12 @@ class Music(commands.Cog):
                     st.current = None
                     break
 
-                # ✅ if loop ON => replay same song (current song loop)
                 if st.loop_enabled:
                     continue
 
-                # ✅ loop OFF => move on
                 st.current = None
                 break
 
-            # after a song ends: if no more in queue => queue ended flow
             if st.queue.empty() and not st.stopped and not st.loop_enabled:
                 msg = await self.get_panel_message(guild)
                 if msg:
@@ -547,7 +520,6 @@ class Music(commands.Cog):
 
         self._hit_cooldown(guild.id)
 
-        # ✅ skip should move next => disable loop
         st = self.get_state(guild.id)
         st.loop_enabled = False
 
@@ -585,7 +557,7 @@ class Music(commands.Cog):
 
         st = self.get_state(guild.id)
         st.stopped = True
-        st.loop_enabled = False  # ✅ stop clears loop
+        st.loop_enabled = False
 
         player = self.get_player(guild)
         if player and getattr(player, "connected", False):
@@ -729,7 +701,8 @@ class Music(commands.Cog):
     @app_commands.command(name="stop", description="Stop playback and clear queue (same VC only)")
     @app_commands.guild_only()
     async def stop(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+        # ✅ FIX: yaha defer mat karo
+        # kyunki _btn_stop() already defer karta hai (embed button jaisa)
         if not await self._ensure_same_vc(interaction):
             return
 
@@ -742,7 +715,6 @@ class Music(commands.Cog):
             try:
                 await self._connect_node()
             except Exception as e:
-                # no crash
                 print("❌ Lavalink node connect failed:", e)
 
     @commands.Cog.listener()
@@ -757,5 +729,4 @@ class Music(commands.Cog):
 
 
 async def setup(bot: commands.Bot):
-    # ✅ If Lavalink env missing/wrong, we still load cog but music will show "disabled" and won't crash bot.
     await bot.add_cog(Music(bot))

@@ -4,6 +4,7 @@ import json
 import time
 import traceback
 import os
+from turtle import st
 from typing import Optional
 
 import discord
@@ -364,6 +365,23 @@ class Music(commands.Cog):
         st = self.get_state(guild_id)
         st.cooldown_until = time.monotonic() + 1.0
 
+    def _ensure_player_loop_running(self, guild: discord.Guild, player: wavelink.Player):
+        """If bot is connected but idle, ensure player_loop task is running (fix: VC idle /play no sound)."""
+        st = self.get_state(guild.id)
+
+    # if task missing/done -> start
+        if (not st.player_task) or st.player_task.done():
+            st.player_task = self.bot.loop.create_task(self.player_loop(guild.id))
+            return
+
+    # task exists but bot is idle & no current -> might be stuck from older run, restart
+        if st.current is None and not getattr(player, "playing", False) and not getattr(player, "paused", False):
+            try:
+                st.player_task.cancel()
+            except:
+                pass
+            st.player_task = self.bot.loop.create_task(self.player_loop(guild.id))
+
     async def player_loop(self, guild_id: int):
         st = self.get_state(guild_id)
         guild = self.bot.get_guild(guild_id)
@@ -661,35 +679,23 @@ class Music(commands.Cog):
                     content="No tracks found. (Make sure Lavalink YouTube plugin is enabled.)"
                 )
 
-            is_idle = (
-                st.current is None
-                and st.queue.empty()
-                and not (getattr(player, "playing", False) or getattr(player, "paused", False))
-            )
 
             if st.stopped:
                 st.stopped = False
 
             for p in playables:
                 await st.queue.put(Track(playable=p, requester_id=interaction.user.id))
-
-            if is_idle:
-                if not st.player_task or st.player_task.done():
-                    st.player_task = self.bot.loop.create_task(self.player_loop(guild.id))
-
-                await asyncio.sleep(0.15)
-                if isinstance(interaction.channel, discord.TextChannel):
-                    await self.set_panel(
-                        interaction.channel,
-                        guild,
-                        embed=self.build_now_playing_embed(guild),
-                        view=MusicPanelView(self, guild.id),
-                    )
-
-                await interaction.edit_original_response(content="Started.")
-            else:
-                await interaction.edit_original_response(content=f"Queued: {st.queue.qsize()} track(s).")
-
+            self._ensure_player_loop_running(guild, player)
+            await asyncio.sleep(0.15)
+            if isinstance(interaction.channel, discord.TextChannel):
+                await self.set_panel(
+                    interaction.channel,
+                    guild,
+                    embed=self.build_now_playing_embed(guild),
+                    view=MusicPanelView(self, guild.id),
+                )
+            await interaction.edit_original_response(content=f"Queued: {st.queue.qsize()} track(s).")
+            
             try:
                 await self.refresh_panel(guild, keep_buttons=True)
             except:
@@ -703,8 +709,7 @@ class Music(commands.Cog):
     @app_commands.command(name="stop", description="Stop playback and clear queue (same VC only)")
     @app_commands.guild_only()
     async def stop(self, interaction: discord.Interaction):
-        # ✅ FIX: yaha defer mat karo
-        # kyunki _btn_stop() already defer karta hai (embed button jaisa)
+
         if not await self._ensure_same_vc(interaction):
             return
 

@@ -1,19 +1,16 @@
 import asyncio
-import json
 import time
 import traceback
 import os
 from typing import Optional
-
 import discord
 from discord.ext import commands
 from discord import app_commands
 import wavelink
 
-
 # ✅ BRAND SYSTEM (SAME)
 BRAND_URL = "https://discord.gg/DVqvtsYNy7"
-BRAND_TITLE = "MUSIC PROVIED BY TEJAS"
+BRAND_TITLE = "MUSIC PROVIDED BY TEJAS"
 
 
 def format_duration_ms(ms: int | None) -> str:
@@ -263,7 +260,8 @@ class Music(commands.Cog):
         filters = wavelink.Filters()
         if st.eightd_enabled:
             try:
-                filters.rotation.set(rotation_hz=0.08)
+                # Fixed for Wavelink 3.x
+                filters.rotation = wavelink.Rotation(rotation_hz=0.08)
             except:
                 pass
 
@@ -286,8 +284,10 @@ class Music(commands.Cog):
         t = st.current
         if not t:
             embed.description = "No track is playing."
-            return embed     
+            return embed
+        
         embed.description = f"**[{t.title}]({BRAND_URL})**"
+        
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
@@ -367,12 +367,12 @@ class Music(commands.Cog):
         """If bot is connected but idle, ensure player_loop task is running (fix: VC idle /play no sound)."""
         st = self.get_state(guild.id)
 
-    # if task missing/done -> start
+        # if task missing/done -> start
         if (not st.player_task) or st.player_task.done():
             st.player_task = self.bot.loop.create_task(self.player_loop(guild.id))
             return
 
-    # task exists but bot is idle & no current -> might be stuck from older run, restart
+        # task exists but bot is idle & no current -> might be stuck from older run, restart
         if st.current is None and not getattr(player, "playing", False) and not getattr(player, "paused", False):
             try:
                 st.player_task.cancel()
@@ -476,7 +476,7 @@ class Music(commands.Cog):
                     pass
                 st.current = None
                 return
-                
+
     # ---------- buttons ----------
     async def _btn_play(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -677,14 +677,15 @@ class Music(commands.Cog):
                     content="No tracks found. (Make sure Lavalink YouTube plugin is enabled.)"
                 )
 
-
             if st.stopped:
                 st.stopped = False
 
             for p in playables:
                 await st.queue.put(Track(playable=p, requester_id=interaction.user.id))
+            
             self._ensure_player_loop_running(guild, player)
             await asyncio.sleep(0.15)
+            
             if isinstance(interaction.channel, discord.TextChannel):
                 await self.set_panel(
                     interaction.channel,
@@ -735,4 +736,3 @@ class Music(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Music(bot))
-    

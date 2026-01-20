@@ -692,7 +692,7 @@ class Music(commands.Cog):
             elif isinstance(results, wavelink.Playlist):
                 playables = list(results)
             elif isinstance(results, (list, tuple)):
-                playables = list(results[:3])
+                playables = list(results[:1])
             else:
                 playables = [results]
 

@@ -429,6 +429,13 @@ class Music(commands.Cog):
                     print("❌ player.play failed:", e)
                     traceback.print_exc()
                     st.current = None
+                
+                    if not st.queue.empty():
+                        try:
+                            track = st.queue.get_nowait()
+                            continue
+                        except:
+                            pass
                     break
 
                 await asyncio.sleep(0.25)
@@ -668,7 +675,7 @@ class Music(commands.Cog):
             elif isinstance(results, wavelink.Playlist):
                 playables = list(results)
             elif isinstance(results, (list, tuple)):
-                playables = list(results[:1])
+                playables = list(results[:3])
             else:
                 playables = [results]
 

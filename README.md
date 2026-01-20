@@ -99,6 +99,7 @@ Auto messages
 
 📁 Project Structure
 
+
 discord-welcome/
 │
 ├── main.py                  # Bot entry point

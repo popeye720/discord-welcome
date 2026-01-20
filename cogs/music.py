@@ -25,17 +25,6 @@ def format_duration_ms(ms: int | None) -> str:
         return f"{h}h {m}m {s}s"
     return f"{m}m {s}s"
 
-def build_idle_leave_embed(self, guild: discord.Guild) -> discord.Embed:
-    embed = discord.Embed(
-        title=BRAND_TITLE,
-        url=BRAND_URL,
-        color=self._brand_color(guild)
-    )
-    embed.description = (
-        "I have left the voice channel due to inactivity. "
-        "Use /play to summon me again!"
-    )
-    return embed
 
 class Track:
     def __init__(self, playable: wavelink.Playable, requester_id: int):
@@ -288,6 +277,18 @@ class Music(commands.Cog):
             color=self._brand_color(guild)
         )
 
+    def build_idle_leave_embed(self, guild: discord.Guild) -> discord.Embed:
+        embed = discord.Embed(
+            title=BRAND_TITLE,
+            url=BRAND_URL,
+            color=self._brand_color(guild)
+        )
+        embed.description = (
+            "Leaving voice channel due to inactivity. "
+            "You can add songs again using /play command."
+        )
+        return embed
+    
     def build_now_playing_embed(self, guild: discord.Guild) -> discord.Embed:
         st = self.get_state(guild.id)
         embed = self._base_embed(guild)
@@ -428,8 +429,6 @@ class Music(commands.Cog):
             try:
                 track = await asyncio.wait_for(st.queue.get(), timeout=2.0)
             except asyncio.TimeoutError:
-                if st.current is None and st.queue.empty() and not getattr(player, "playing", False) and not getattr(player, "paused", False):
-                    return
                 continue
 
             while True:
@@ -485,13 +484,13 @@ class Music(commands.Cog):
                         pass
 
                 await self.post_queue_ended_new_embed(guild)
-                await asyncio.sleep(600)
+                await asyncio.sleep(120)
                 if not st.queue.empty() or getattr(player, "playing", False) or getattr(player, "paused", False):
                     continue
                 ch = guild.get_channel(st.last_play_text_channel_id) if st.last_play_text_channel_id else None
                 if isinstance(ch, discord.TextChannel):
                     try:
-                        await ch.send(embed=build_idle_leave_embed(self, guild))
+                        await ch.send(embed=self.build_idle_leave_embed(guild))
                     except:
                         pass
                 try:

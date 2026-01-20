@@ -25,6 +25,17 @@ def format_duration_ms(ms: int | None) -> str:
         return f"{h}h {m}m {s}s"
     return f"{m}m {s}s"
 
+def build_idle_leave_embed(self, guild: discord.Guild) -> discord.Embed:
+    embed = discord.Embed(
+        title=BRAND_TITLE,
+        url=BRAND_URL,
+        color=self._brand_color(guild)
+    )
+    embed.description = (
+        "I have left the voice channel due to inactivity. "
+        "Use /play to summon me again!"
+    )
+    return embed
 
 class Track:
     def __init__(self, playable: wavelink.Playable, requester_id: int):
@@ -160,7 +171,7 @@ class Music(commands.Cog):
     def get_player(self, guild: discord.Guild) -> Optional[wavelink.Player]:
         vc = guild.voice_client
         return vc if isinstance(vc, wavelink.Player) else None
-
+    
     async def _safe_ephemeral(self, interaction: discord.Interaction, content: str):
         try:
             if interaction.response.is_done():
@@ -474,9 +485,15 @@ class Music(commands.Cog):
                         pass
 
                 await self.post_queue_ended_new_embed(guild)
-                await asyncio.sleep(60)
+                await asyncio.sleep(600)
                 if not st.queue.empty() or getattr(player, "playing", False) or getattr(player, "paused", False):
                     continue
+                ch = guild.get_channel(st.last_play_text_channel_id) if st.last_play_text_channel_id else None
+                if isinstance(ch, discord.TextChannel):
+                    try:
+                        await ch.send(embed=build_idle_leave_embed(self, guild))
+                    except:
+                        pass
                 try:
                     await player.disconnect()
                 except:

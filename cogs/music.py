@@ -483,7 +483,7 @@ class Music(commands.Cog):
                     except:
                         pass
 
-                await self.post_queue_ended_new_embed(guild)
+                #await self.post_queue_ended_new_embed(guild)
                 await asyncio.sleep(120)
                 if not st.queue.empty() or getattr(player, "playing", False) or getattr(player, "paused", False):
                     continue

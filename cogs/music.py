@@ -490,7 +490,7 @@ class Music(commands.Cog):
                 ch = guild.get_channel(st.last_play_text_channel_id) if st.last_play_text_channel_id else None
                 if isinstance(ch, discord.TextChannel):
                     try:
-                        await ch.send(embed=self.build_idle_leave_embed(guild))
+                        #await ch.send(embed=self.build_idle_leave_embed(guild))
                     except:
                         pass
                 try:

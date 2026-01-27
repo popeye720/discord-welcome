@@ -10,15 +10,15 @@ class DMForward(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # ❌ ignore bot messages
+        # ignore bot messages
         if message.author.bot:
             return
 
-        # ❌ only DM messages
+        # only DM messages
         if message.guild is not None:
             return
 
-        # ❌ owner id missing
+        # owner id missing
         if OWNER_ID == 0:
             return
 
@@ -26,27 +26,32 @@ class DMForward(commands.Cog):
         if not owner:
             owner = await self.bot.fetch_user(OWNER_ID)
 
-        # 📨 basic text
-        content = message.content or "*[No text]*"
+        has_text = bool(message.content and message.content.strip())
+        has_attachments = bool(message.attachments)
 
-        embed = discord.Embed(
-            title="📩 New DM received",
-            description=content,
-            color=discord.Color.blurple()
-        )
-        embed.set_author(
-            name=f"{message.author} ({message.author.id})",
-            icon_url=message.author.display_avatar.url
-        )
-
-        await owner.send(embed=embed)
-
-        # 📎 attachments (photo / video / files)
-        for attachment in message.attachments:
-            await owner.send(
-                content=f"📎 Attachment from **{message.author}**",
-                file=await attachment.to_file()
+        # ========== CASE 1 & 3: TEXT present → send EMBED ==========
+        if has_text:
+            embed = discord.Embed(
+                title="📩 New DM received",
+                description=message.content,
+                color=discord.Color.blurple()
             )
+            embed.set_author(
+                name=f"{message.author} ({message.author.id})",
+                icon_url=message.author.display_avatar.url
+            )
+
+            await owner.send(embed=embed)
+
+        # ========== CASE 2 & 3: ATTACHMENTS present → NORMAL MSG ==========
+        if has_attachments:
+            for attachment in message.attachments:
+                await owner.send(
+                    content=(
+                        f"📎 Attachment from **{message.author}**\n"
+                        f"{attachment.url}"
+                    )
+                )
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(DMForward(bot))

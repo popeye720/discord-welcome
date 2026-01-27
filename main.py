@@ -108,6 +108,7 @@ async def main():
         await bot.load_extension("cogs.chatpolling")
         await bot.load_extension("cogs.modal")
         await bot.load_extension("cogs.autoping")
+        await bot.load_extension("cogs.dm_forward")
 
         LL_URI = (os.getenv("LAVALINK_URI") or "").strip()
         LL_PASS = (os.getenv("LAVALINK_PASSWORD") or "").strip()

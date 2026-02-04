@@ -127,8 +127,8 @@ class AdminCreateModal(discord.ui.Modal):
         super().__init__(title="📋 Create Form Panel")
         self.bot = bot
 
-        self.title = discord.ui.TextInput(label="Form Title", required=True)
-        self.desc = discord.ui.TextInput(
+        self.form_title = discord.ui.TextInput(label="Form Title", required=True)
+        self.form_desc = discord.ui.TextInput(
             label="Form Description",
             style=discord.TextStyle.paragraph,
             required=True
@@ -144,7 +144,7 @@ class AdminCreateModal(discord.ui.Modal):
             required=False
         )
 
-        for item in (self.title, self.desc, self.questions, self.role):
+        for item in (self.form_title, self.form_desc, self.questions, self.role):
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -164,7 +164,7 @@ class AdminCreateModal(discord.ui.Modal):
         role_id = _resolve_role_id(guild, self.role.value)
 
         modal_id = uuid.uuid4().hex
-        embed = _build_panel_embed(self.title.value, self.desc.value)
+        embed = _build_panel_embed(self.form_title.value, self.form_desc.value)
         view = ModalPanelView(modal_id)
 
         msg = await channel.send(embed=embed, view=view)
@@ -174,8 +174,8 @@ class AdminCreateModal(discord.ui.Modal):
             "modal_id": modal_id,
             "channel_id": channel.id,
             "message_id": msg.id,
-            "title": self.title.value,
-            "description": self.desc.value,
+            "title": self.form_title.value,
+            "description": self.form_desc.value,
             "questions": qs[:5],
             "auto_role": role_id,
             "created_at": datetime.now(timezone.utc)
@@ -197,12 +197,9 @@ class Forms(commands.Cog):
     )
     @app_commands.guild_only()
     async def create_forms(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.send_modal(
-                AdminCreateModal(self.bot)
-            )
-        except Exception as e:
-            await safe_ephemeral(interaction, f"❌ Failed to open modal: `{e}`")
+        await interaction.response.send_modal(
+            AdminCreateModal(self.bot)
+        )
 
 
 async def setup(bot: commands.Bot):

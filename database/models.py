@@ -28,11 +28,6 @@ fungames_col.create_index("guild_id", unique=True)
 serverstats_col = db["server_stats"]
 serverstats_col.create_index("guild_id", unique=True)
 
-forms_col = db["forms"]
-form_responses_col = db["form_responses"]
-
-forms_col.create_index("guild_id", unique=True)
-form_responses_col.create_index([("guild_id", 1), ("user_id", 1)], unique=True)
 
 modal_col = db["modals"]
 modal_responses_col = db["modal_responses"]

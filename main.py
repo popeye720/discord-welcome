@@ -41,9 +41,6 @@ async def on_ready():
     from cogs.guild_manager import GuildActionView
     bot.add_view(GuildActionView(bot, guild_id=0))
 
-    from cogs.forms import UserFormView
-    bot.add_view(UserFormView(guild_id=0))
-
     try:
         from cogs.modal import ModalPanelView
         from database.models import modal_col
@@ -98,7 +95,6 @@ async def main():
         await bot.load_extension("cogs.profile")
         await bot.load_extension("cogs.fungames")
         await bot.load_extension("cogs.ping")
-        await bot.load_extension("cogs.forms")
         await bot.load_extension("cogs.audiodownloader")
         await bot.load_extension("cogs.scheduled_embeds")
         await bot.load_extension("cogs.search")

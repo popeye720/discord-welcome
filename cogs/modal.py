@@ -209,7 +209,14 @@ class Forms(commands.Cog):
     @app_commands.command(name="create-forms", description="Create a form panel in current channel")
     @app_commands.guild_only()
     async def create_forms(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(AdminCreateModal(self.bot))
+        if modal_col.find_one({"guild_id": interaction.guild.id}):
+            return await safe_ephemeral(
+                interaction,
+                "⚠️ A form already exists in this server."
+            )
+        await interaction.response.send_modal(
+            AdminCreateModal(self.bot)
+    )
 
     # -------- CLOSE FORMS --------
     @app_commands.command(name="close-forms", description="Close form and delete all responses")

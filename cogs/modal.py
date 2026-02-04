@@ -197,7 +197,10 @@ class AdminCreateModal(discord.ui.Modal):
         })
 
         self.bot.add_view(view, message_id=msg.id)
-        await safe_ephemeral(interaction, "✅ Form created successfully.")
+        await interaction.response.send_message(
+    "✅ Form created successfully.",
+    ephemeral=True
+)
 
 
 # ----------------- COG -----------------

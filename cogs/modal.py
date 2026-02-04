@@ -29,11 +29,7 @@ def _normalize_questions(text: str) -> List[str]:
 
 
 def _build_panel_embed(title: str, description: str) -> discord.Embed:
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=discord.Color.gold()
-    )
+    embed = discord.Embed(title=title, description=description, color=discord.Color.gold())
     embed.set_footer(text="Use buttons below: Fill / Edit / Delete")
     return embed
 
@@ -68,11 +64,7 @@ class DynamicModal(discord.ui.Modal):
         answers = {q: self.inputs[q].value for q in self.inputs}
 
         modal_responses_col.update_one(
-            {
-                "guild_id": guild.id,
-                "modal_id": self.modal_doc["modal_id"],
-                "user_id": self.user.id
-            },
+            {"guild_id": guild.id, "modal_id": self.modal_doc["modal_id"], "user_id": self.user.id},
             {"$set": {"answers": answers, "updated_at": datetime.now(timezone.utc)}},
             upsert=True
         )
@@ -99,25 +91,56 @@ class ModalPanelView(discord.ui.View):
     def _get_modal(self, guild_id: int):
         return modal_col.find_one({"guild_id": guild_id, "modal_id": self.modal_id})
 
+    # -------- Fill --------
     @discord.ui.button(label="📝 Fill", style=discord.ButtonStyle.success)
     async def fill_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal_doc = self._get_modal(interaction.guild.id)
         if not modal_doc:
             return await safe_ephemeral(interaction, "❌ Form not active.")
 
-        existing = modal_responses_col.find_one(
-            {
-                "guild_id": interaction.guild.id,
-                "modal_id": self.modal_id,
-                "user_id": interaction.user.id
-            }
-        )
+        existing = modal_responses_col.find_one({
+            "guild_id": interaction.guild.id,
+            "modal_id": self.modal_id,
+            "user_id": interaction.user.id
+        })
         if existing:
             return await safe_ephemeral(interaction, "⚠️ Already submitted. Use Edit.")
 
         await interaction.response.send_modal(
             DynamicModal(modal_doc, interaction.user)
         )
+
+    # -------- Edit --------
+    @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.primary)
+    async def edit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal_doc = self._get_modal(interaction.guild.id)
+        if not modal_doc:
+            return await safe_ephemeral(interaction, "❌ Form not active.")
+
+        existing = modal_responses_col.find_one({
+            "guild_id": interaction.guild.id,
+            "modal_id": self.modal_id,
+            "user_id": interaction.user.id
+        })
+        if not existing:
+            return await safe_ephemeral(interaction, "❌ No submission found.")
+
+        await interaction.response.send_modal(
+            DynamicModal(modal_doc, interaction.user, existing.get("answers", {}))
+        )
+
+    # -------- Delete --------
+    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
+    async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        deleted = modal_responses_col.find_one_and_delete({
+            "guild_id": interaction.guild.id,
+            "modal_id": self.modal_id,
+            "user_id": interaction.user.id
+        })
+        if not deleted:
+            return await safe_ephemeral(interaction, "❌ No submission found.")
+
+        await safe_ephemeral(interaction, "🗑️ Your response deleted.")
 
 
 # ----------------- ADMIN CREATE FORM -----------------
@@ -191,10 +214,7 @@ class Forms(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(
-        name="create-forms",
-        description="Create a form panel in current channel"
-    )
+    @app_commands.command(name="create-forms", description="Create a form panel in current channel")
     @app_commands.guild_only()
     async def create_forms(self, interaction: discord.Interaction):
         await interaction.response.send_modal(

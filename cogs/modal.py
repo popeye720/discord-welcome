@@ -29,7 +29,11 @@ def _normalize_questions(text: str) -> List[str]:
 
 
 def _build_panel_embed(title: str, description: str) -> discord.Embed:
-    embed = discord.Embed(title=title, description=description, color=discord.Color.gold())
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=discord.Color.gold()
+    )
     embed.set_footer(text="Use buttons below: Fill / Edit / Delete")
     return embed
 
@@ -37,7 +41,12 @@ def _build_panel_embed(title: str, description: str) -> discord.Embed:
 # ----------------- USER FORM MODAL -----------------
 
 class DynamicModal(discord.ui.Modal):
-    def __init__(self, modal_doc: Dict, user: discord.Member, old_answers: Optional[Dict[str, str]] = None):
+    def __init__(
+        self,
+        modal_doc: Dict,
+        user: discord.Member,
+        old_answers: Optional[Dict[str, str]] = None
+    ):
         super().__init__(title=modal_doc.get("title", "📋 Form"))
 
         self.modal_doc = modal_doc
@@ -59,16 +68,29 @@ class DynamicModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         guild = interaction.guild
         if not guild:
-            return await safe_ephemeral(interaction, "❌ Server only.")
+            return await interaction.response.send_message(
+                "❌ Server only.",
+                ephemeral=True
+            )
 
         answers = {q: self.inputs[q].value for q in self.inputs}
 
         modal_responses_col.update_one(
-            {"guild_id": guild.id, "modal_id": self.modal_doc["modal_id"], "user_id": self.user.id},
-            {"$set": {"answers": answers, "updated_at": datetime.now(timezone.utc)}},
+            {
+                "guild_id": guild.id,
+                "modal_id": self.modal_doc["modal_id"],
+                "user_id": self.user.id
+            },
+            {
+                "$set": {
+                    "answers": answers,
+                    "updated_at": datetime.now(timezone.utc)
+                }
+            },
             upsert=True
         )
 
+        # Auto role
         role_id = self.modal_doc.get("auto_role")
         if role_id:
             role = guild.get_role(int(role_id))
@@ -78,7 +100,11 @@ class DynamicModal(discord.ui.Modal):
                 except Exception:
                     pass
 
-        await safe_ephemeral(interaction, "✅ **Form submitted successfully!**")
+        # ✅ IMPORTANT: ONLY response, no safe_ephemeral
+        await interaction.response.send_message(
+            "✅ **Form submitted successfully!**",
+            ephemeral=True
+        )
 
 
 # ----------------- PANEL VIEW -----------------
@@ -89,7 +115,10 @@ class ModalPanelView(discord.ui.View):
         self.modal_id = modal_id
 
     def _get_modal(self, guild_id: int):
-        return modal_col.find_one({"guild_id": guild_id, "modal_id": self.modal_id})
+        return modal_col.find_one({
+            "guild_id": guild_id,
+            "modal_id": self.modal_id
+        })
 
     @discord.ui.button(label="📝 Fill", style=discord.ButtonStyle.success)
     async def fill_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -103,9 +132,14 @@ class ModalPanelView(discord.ui.View):
             "user_id": interaction.user.id
         })
         if existing:
-            return await safe_ephemeral(interaction, "⚠️ Already submitted. Use Edit.")
+            return await safe_ephemeral(
+                interaction,
+                "⚠️ Already submitted. Use Edit."
+            )
 
-        await interaction.response.send_modal(DynamicModal(modal_doc, interaction.user))
+        await interaction.response.send_modal(
+            DynamicModal(modal_doc, interaction.user)
+        )
 
     @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.primary)
     async def edit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -119,7 +153,11 @@ class ModalPanelView(discord.ui.View):
             return await safe_ephemeral(interaction, "❌ No submission found.")
 
         await interaction.response.send_modal(
-            DynamicModal(modal_doc, interaction.user, existing.get("answers", {}))
+            DynamicModal(
+                modal_doc,
+                interaction.user,
+                existing.get("answers", {})
+            )
         )
 
     @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
@@ -159,7 +197,12 @@ class AdminCreateModal(discord.ui.Modal):
             required=False
         )
 
-        for item in (self.form_title, self.form_desc, self.questions, self.role):
+        for item in (
+            self.form_title,
+            self.form_desc,
+            self.questions,
+            self.role
+        ):
             self.add_item(item)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -167,19 +210,31 @@ class AdminCreateModal(discord.ui.Modal):
         channel = interaction.channel
 
         if not guild or not channel:
-            return await safe_ephemeral(interaction, "❌ Server only.")
+            return await interaction.response.send_message(
+                "❌ Server only.",
+                ephemeral=True
+            )
 
         if not is_admin_or_guild_owner(interaction):
-            return await safe_ephemeral(interaction, "❌ Admin only.")
+            return await interaction.response.send_message(
+                "❌ Admin only.",
+                ephemeral=True
+            )
 
         if modal_col.find_one({"guild_id": guild.id}):
-            return await safe_ephemeral(interaction, "⚠️ A form already exists.")
+            return await interaction.response.send_message(
+                "⚠️ A form already exists.",
+                ephemeral=True
+            )
 
         qs = _normalize_questions(self.questions.value)
         role_id = _resolve_role_id(guild, self.role.value)
 
         modal_id = uuid.uuid4().hex
-        embed = _build_panel_embed(self.form_title.value, self.form_desc.value)
+        embed = _build_panel_embed(
+            self.form_title.value,
+            self.form_desc.value
+        )
         view = ModalPanelView(modal_id)
 
         msg = await channel.send(embed=embed, view=view)
@@ -197,10 +252,12 @@ class AdminCreateModal(discord.ui.Modal):
         })
 
         self.bot.add_view(view, message_id=msg.id)
+
+        # ✅ Modal safe response
         await interaction.response.send_message(
-    "✅ Form created successfully.",
-    ephemeral=True
-)
+            "✅ Form created successfully.",
+            ephemeral=True
+        )
 
 
 # ----------------- COG -----------------
@@ -209,7 +266,10 @@ class Forms(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="create-forms", description="Create a form panel in current channel")
+    @app_commands.command(
+        name="create-forms",
+        description="Create a form panel in current channel"
+    )
     @app_commands.guild_only()
     async def create_forms(self, interaction: discord.Interaction):
         if modal_col.find_one({"guild_id": interaction.guild.id}):
@@ -217,12 +277,15 @@ class Forms(commands.Cog):
                 interaction,
                 "⚠️ A form already exists in this server."
             )
+
         await interaction.response.send_modal(
             AdminCreateModal(self.bot)
-    )
+        )
 
-    # -------- CLOSE FORMS --------
-    @app_commands.command(name="close-forms", description="Close form and delete all responses")
+    @app_commands.command(
+        name="close-forms",
+        description="Close form and delete all responses"
+    )
     @app_commands.guild_only()
     async def close_forms(self, interaction: discord.Interaction):
         if not is_admin_or_guild_owner(interaction):
@@ -242,12 +305,20 @@ class Forms(commands.Cog):
             pass
 
         modal_col.delete_one({"guild_id": guild.id})
-        modal_responses_col.delete_many({"guild_id": guild.id, "modal_id": modal_doc["modal_id"]})
+        modal_responses_col.delete_many({
+            "guild_id": guild.id,
+            "modal_id": modal_doc["modal_id"]
+        })
 
-        await safe_ephemeral(interaction, "🗑️ Form closed. All responses deleted.")
+        await safe_ephemeral(
+            interaction,
+            "🗑️ Form closed. All responses deleted."
+        )
 
-    # -------- FORMS RESPONSE --------
-    @app_commands.command(name="forms-response", description="Send all form responses in this channel")
+    @app_commands.command(
+        name="forms-response",
+        description="Send all form responses in this channel"
+    )
     @app_commands.guild_only()
     async def forms_response(self, interaction: discord.Interaction):
         if not is_admin_or_guild_owner(interaction):
@@ -266,7 +337,10 @@ class Forms(commands.Cog):
         if not responses:
             return await safe_ephemeral(interaction, "❌ No responses found.")
 
-        await safe_ephemeral(interaction, f"📄 Sending {len(responses)} responses here.")
+        await safe_ephemeral(
+            interaction,
+            f"📄 Sending {len(responses)} responses here."
+        )
 
         for r in responses:
             user_id = r.get("user_id")

@@ -90,7 +90,6 @@ class DynamicModal(discord.ui.Modal):
             upsert=True
         )
 
-        # Auto role
         role_id = self.modal_doc.get("auto_role")
         if role_id:
             role = guild.get_role(int(role_id))
@@ -100,14 +99,13 @@ class DynamicModal(discord.ui.Modal):
                 except Exception:
                     pass
 
-        # ✅ IMPORTANT: ONLY response, no safe_ephemeral
         await interaction.response.send_message(
             "✅ **Form submitted successfully!**",
             ephemeral=True
         )
 
 
-# ----------------- PANEL VIEW -----------------
+# ----------------- PANEL VIEW (PERSISTENT SAFE) -----------------
 
 class ModalPanelView(discord.ui.View):
     def __init__(self, modal_id: str):
@@ -120,7 +118,11 @@ class ModalPanelView(discord.ui.View):
             "modal_id": self.modal_id
         })
 
-    @discord.ui.button(label="📝 Fill", style=discord.ButtonStyle.success)
+    @discord.ui.button(
+        label="📝 Fill",
+        style=discord.ButtonStyle.success,
+        custom_id="modal:fill"
+    )
     async def fill_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal_doc = self._get_modal(interaction.guild.id)
         if not modal_doc:
@@ -141,7 +143,11 @@ class ModalPanelView(discord.ui.View):
             DynamicModal(modal_doc, interaction.user)
         )
 
-    @discord.ui.button(label="✏️ Edit", style=discord.ButtonStyle.primary)
+    @discord.ui.button(
+        label="✏️ Edit",
+        style=discord.ButtonStyle.primary,
+        custom_id="modal:edit"
+    )
     async def edit_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal_doc = self._get_modal(interaction.guild.id)
         existing = modal_responses_col.find_one({
@@ -160,7 +166,11 @@ class ModalPanelView(discord.ui.View):
             )
         )
 
-    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger)
+    @discord.ui.button(
+        label="🗑️ Delete",
+        style=discord.ButtonStyle.danger,
+        custom_id="modal:delete"
+    )
     async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         deleted = modal_responses_col.find_one_and_delete({
             "guild_id": interaction.guild.id,
@@ -251,9 +261,6 @@ class AdminCreateModal(discord.ui.Modal):
             "created_at": datetime.now(timezone.utc)
         })
 
-        self.bot.add_view(view, message_id=msg.id)
-
-        # ✅ Modal safe response
         await interaction.response.send_message(
             "✅ Form created successfully.",
             ephemeral=True

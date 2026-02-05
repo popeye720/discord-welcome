@@ -10,7 +10,7 @@ from discord import app_commands
 from database.models import modal_col, modal_responses_col
 from utils.interaction import safe_ephemeral
 from utils.permissions import is_admin_or_guild_owner
-
+from utils.embed_color import create_embed
 
 # ----------------- HELPERS -----------------
 
@@ -29,14 +29,12 @@ def _normalize_questions(text: str) -> List[str]:
 
 
 def _build_panel_embed(title: str, description: str) -> discord.Embed:
-    embed = discord.Embed(
+    embed = create_embed(
         title=title,
-        description=description,
-        color=discord.Color.gold()
+        description=description
     )
     embed.set_footer(text="Use buttons below: Fill / Edit / Delete")
     return embed
-
 
 # ----------------- USER FORM MODAL -----------------
 

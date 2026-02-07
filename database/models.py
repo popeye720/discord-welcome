@@ -84,3 +84,7 @@ ai_memory_col.create_index(
     [("guild_id", 1), ("user_id", 1)],
     unique=True
 )
+
+
+system_prompt_col = db["system_prompt"]
+system_prompt_col.create_index("_id", unique=True)

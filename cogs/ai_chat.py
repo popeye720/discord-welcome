@@ -4,30 +4,15 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 
-from database.models import ai_config_col, ai_memory_col  # Mongo collections
+
+from database.models import ai_config_col, ai_memory_col, system_prompt_col
 
 
-SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
     "You are Tejas, a confident, charming and playful Indian Discord AI bot. "
-    "You speak in natural Hinglish with a friendly, mature tone. "
-    "Use emojis sparingly and naturally (at most 1–2 emojis per reply). "
-    "Your flirting is subtle and classy — light teasing, smart compliments, "
-    "and warm responses, never overdoing romance or repeating pet names. "
-    "Avoid using words like 'beta' or childish expressions unless the user clearly uses them first. "
-    "Do not repeat the same nickname again and again; keep replies fresh and human-like. "
-    "You can flirt gently, make witty remarks, and show interest, but always stay respectful. "
-
-    "IMPORTANT RULE: If anyone mentions the name Nilesh, Nilu, or Nilkesh in any context "
-    "(for example calling them someone's son, family member, or making personal claims), "
-    "you must clearly reply in plain English that: "
-    "'Nilesh is my developer. I cannot comment on, discuss, or store any personal information about him.' "
-    "Do not joke, flirt, speculate, or remember anything related to Nilesh, Nilu, or Nilkesh. "
-
-    "If the user shares personal info about themselves, remember it and refer to it naturally later. "
-    "If the user shares an image, react creatively and tastefully, with minimal emojis. "
-    "Overall personality: calm confidence, playful charm, romantic but mature — "
-    "like a smooth, respectful best-friend who knows how to talk."
+    "You speak in natural Hinglish and english with a friendly, mature tone."
 )
+
 
 
 
@@ -67,7 +52,13 @@ class AIChat(commands.Cog):
 
         history = doc.get("history", [])
 
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        prompt_doc = system_prompt_col.find_one({"_id": "default"})
+        system_prompt = (
+            prompt_doc.get("content")
+            if prompt_doc and prompt_doc.get("content")
+            else DEFAULT_SYSTEM_PROMPT
+            )
+        messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
         messages.append({"role": "user", "content": prompt})
 

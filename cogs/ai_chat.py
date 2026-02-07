@@ -4,7 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 
-from database.models import ai_config_col, ai_memory_col  # 👈 Mongo collections
+from database.models import ai_config_col, ai_memory_col  # Mongo collections
 
 
 SYSTEM_PROMPT = (
@@ -44,10 +44,13 @@ class AIChat(commands.Cog):
         return False
 
     # --------------------------------------------------
-    # AI CORE
+    # AI CORE (FIXED, SAME LOGIC)
     # --------------------------------------------------
-    async def ask_ai(self, user_id: int, prompt: str) -> str:
-        doc = ai_memory_col.find_one({"user_id": user_id}) or {}
+    async def ask_ai(self, guild_id: int, user_id: int, prompt: str) -> str:
+        doc = ai_memory_col.find_one(
+            {"guild_id": guild_id, "user_id": user_id}
+        ) or {}
+
         history = doc.get("history", [])
 
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -75,7 +78,7 @@ class AIChat(commands.Cog):
         history.append({"role": "assistant", "content": reply})
 
         ai_memory_col.update_one(
-            {"user_id": user_id},
+            {"guild_id": guild_id, "user_id": user_id},
             {"$set": {"history": history[-MAX_HISTORY:]}},
             upsert=True
         )
@@ -140,7 +143,7 @@ class AIChat(commands.Cog):
                 ephemeral=True
             )
 
-        ai_memory_col.delete_many({})
+        ai_memory_col.delete_many({"guild_id": interaction.guild.id})
         await interaction.response.send_message(
             "🧹 **All AI memory cleared**",
             ephemeral=True
@@ -161,7 +164,10 @@ class AIChat(commands.Cog):
                 ephemeral=True
             )
 
-        ai_memory_col.delete_one({"user_id": interaction.user.id})
+        ai_memory_col.delete_one({
+            "guild_id": interaction.guild.id,
+            "user_id": interaction.user.id
+        })
 
         await interaction.response.send_message(
             "🧹 **Your AI memory has been cleared**",
@@ -193,7 +199,11 @@ class AIChat(commands.Cog):
                     prompt += f"\n[User shared an image: {a.url}]"
 
         async with message.channel.typing():
-            reply = await self.ask_ai(message.author.id, prompt)
+            reply = await self.ask_ai(
+                message.guild.id,
+                message.author.id,
+                prompt
+            )
             await message.reply(f"{message.author.mention} {reply}")
 
 

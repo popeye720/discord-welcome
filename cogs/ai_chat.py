@@ -20,7 +20,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 AI_MODEL = "llama-3.1-8b-instant"
 AI_TEMP = 0.3
-AI_MAX_TOKENS = 900  # ✅ split ke baad badha sakte ho
+AI_MAX_TOKENS = 400  # ✅ split ke baad badha sakte ho
 MAX_HISTORY = 10
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")

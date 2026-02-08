@@ -19,7 +19,7 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 AI_MODEL = "llama-3.1-8b-instant"
-AI_TEMP = 0.3
+AI_TEMP = 0.55
 AI_MAX_TOKENS = 400  # ✅ split ke baad badha sakte ho
 MAX_HISTORY = 10
 

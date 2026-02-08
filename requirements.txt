@@ -12,3 +12,4 @@ edge-tts
 gTTS
 ddgs
 aiohttp>=3.9
+pillow

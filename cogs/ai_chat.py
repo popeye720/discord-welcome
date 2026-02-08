@@ -20,7 +20,7 @@ DEFAULT_SYSTEM_PROMPT = (
 
 AI_MODEL = "llama-3.1-8b-instant"
 AI_TEMP = 0.3
-AI_MAX_TOKENS = 400
+AI_MAX_TOKENS = 900  # ✅ split ke baad badha sakte ho
 MAX_HISTORY = 10
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -41,6 +41,44 @@ class AIChat(commands.Cog):
             interaction.user.id == guild.owner_id
             or interaction.user.guild_permissions.administrator
         )
+
+    # --------------------------------------------------
+    # SEND SPLIT REPLY (Discord 2000 char safe)
+    # --------------------------------------------------
+    async def send_split_reply(self, message: discord.Message, text: str, mention: str, limit: int = 1900):
+        """
+        Sends reply in multiple messages if text exceeds Discord's 2000 char limit.
+        First chunk replies to user (with mention), remaining chunks are sent normally.
+        limit=1900 to keep buffer for mention + formatting.
+        """
+        if not text:
+            return
+
+        # Normalize
+        text = str(text)
+
+        chunks = []
+        while text:
+            if len(text) <= limit:
+                chunks.append(text)
+                break
+
+            # Try to split nicely on newline/space
+            cut = text.rfind("\n", 0, limit)
+            if cut == -1:
+                cut = text.rfind(" ", 0, limit)
+            if cut == -1:
+                cut = limit
+
+            chunks.append(text[:cut].rstrip())
+            text = text[cut:].lstrip()
+
+        # First message as reply (with mention)
+        await message.reply(f"{mention} {chunks[0]}")
+
+        # Remaining chunks in same channel (no extra mention spam)
+        for chunk in chunks[1:]:
+            await message.channel.send(chunk)
 
     # --------------------------------------------------
     # AI CORE
@@ -215,7 +253,9 @@ class AIChat(commands.Cog):
                 message.author.id,
                 prompt
             )
-            await message.reply(f"{message.author.mention} {reply}")
+
+            # ✅ split send
+            await self.send_split_reply(message, reply, message.author.mention, limit=1900)
 
 
 async def setup(bot: commands.Bot):

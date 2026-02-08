@@ -46,11 +46,6 @@ class AIChat(commands.Cog):
     # SEND SPLIT REPLY (Discord 2000 char safe)
     # --------------------------------------------------
     async def send_split_reply(self, message: discord.Message, text: str, mention: str, limit: int = 1900):
-        """
-        Sends reply in multiple messages if text exceeds Discord's 2000 char limit.
-        First chunk replies to user (with mention), remaining chunks are sent normally.
-        limit=1900 to keep buffer for mention + formatting.
-        """
         if not text:
             return
 

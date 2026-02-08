@@ -8,44 +8,50 @@ class PrivateVC(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ================== USER PERMISSION ==================
-    def user_allowed(self, interaction: discord.Interaction, role_id: int | None):
-        user = interaction.user
-        guild = interaction.guild
-
-        if user.id == guild.owner_id:
+    # ================== PERMISSION CHECK ==================
+    def is_admin_owner_or_role(self, interaction, role_id):
+        if interaction.user.id == interaction.guild.owner_id:
             return True
-        if user.guild_permissions.administrator:
+        if interaction.user.guild_permissions.administrator:
             return True
-        if role_id and discord.utils.get(user.roles, id=role_id):
+        if role_id and discord.utils.get(interaction.user.roles, id=role_id):
             return True
         return False
 
-    # ================== BOT PERMISSION ==================
-    def bot_allowed(self, interaction: discord.Interaction):
-        me = interaction.guild.me
-        perms = me.guild_permissions
-
-        return (
-            perms.manage_channels
-            and perms.move_members
-            and perms.view_channel
-            and perms.connect
-        )
-
-    # ================== GROUP ==================
+    # ================== COMMAND GROUP ==================
     privatevc = app_commands.Group(
-        name="private-vc",
-        description="Private voice channel system",
-        guild_only=True
+        name="privatevc",
+        description="Manage private voice channels"
     )
 
-    # ================== SETUP ==================
-    @privatevc.command(name="setup")
-    async def setup_vc(self, interaction: discord.Interaction, role: discord.Role):
-        if not interaction.user.guild_permissions.administrator:
+    # ================== /privatevc setup ==================
+    @privatevc.command(
+        name="setup",
+        description="Enable private VC system and set allowed role"
+    )
+    async def setup_vc(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role
+    ):
+        if not (
+            interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+        ):
             return await interaction.response.send_message(
-                "❌ Admin only command", ephemeral=True
+                "❌ **Admin only command**",
+                ephemeral=True
+            )
+
+        existing = privatevc_col.find_one({"guild_id": interaction.guild.id})
+
+        if existing and existing.get("enabled"):
+            return await interaction.response.send_message(
+                "❌ **Private VC already enabled**\n\n"
+                "👉 First disable it using:\n"
+                "`/privatevc disable`\n\n"
+                "Then run setup again.",
+                ephemeral=True
             )
 
         privatevc_col.update_one(
@@ -61,27 +67,40 @@ class PrivateVC(commands.Cog):
         )
 
         await interaction.response.send_message(
-            f"✅ Private VC enabled\nAllowed Role: {role.mention}",
+            "✅ **Private VC system enabled**\n\n"
+            f"🎭 **Allowed Role:** {role.mention}",
             ephemeral=True
         )
 
-    # ================== DISABLE ==================
-    @privatevc.command(name="disable")
+    # ================== /privatevc disable ==================
+    @privatevc.command(
+        name="disable",
+        description="Disable private VC system and clear all data"
+    )
     async def disable_vc(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
+        if not (
+            interaction.user.guild_permissions.administrator
+            or interaction.user.id == interaction.guild.owner_id
+        ):
             return await interaction.response.send_message(
-                "❌ Admin only command", ephemeral=True
+                "❌ **Admin only command**",
+                ephemeral=True
             )
 
         privatevc_col.delete_one({"guild_id": interaction.guild.id})
 
         await interaction.response.send_message(
-            "🛑 Private VC system disabled",
+            "🛑 **Private VC system disabled**\n\n"
+            "🧹 All stored data has been cleared.\n"
+            "You can now run `/privatevc setup` again.",
             ephemeral=True
         )
 
-    # ================== CREATE ==================
-    @privatevc.command(name="create")
+    # ================== /privatevc create ==================
+    @privatevc.command(
+        name="create",
+        description="Create your own private voice channel"
+    )
     async def create_vc(self, interaction: discord.Interaction):
         guild = interaction.guild
         user = interaction.user
@@ -89,31 +108,30 @@ class PrivateVC(commands.Cog):
         data = privatevc_col.find_one({"guild_id": guild.id})
         if not data or not data.get("enabled"):
             return await interaction.response.send_message(
-                "❌ Private VC system disabled", ephemeral=True
+                "❌ **Private VC system is disabled**",
+                ephemeral=True
             )
 
-        if not self.user_allowed(interaction, data.get("allowed_role_id")):
+        if not self.is_admin_owner_or_role(interaction, data.get("allowed_role_id")):
             return await interaction.response.send_message(
-                "❌ You are not allowed to create a VC", ephemeral=True
-            )
-
-        if not self.bot_allowed(interaction):
-            return await interaction.response.send_message(
-                "❌ Bot missing permissions (Manage Channels / Move Members)",
+                "❌ **You are not allowed to create a private VC**",
                 ephemeral=True
             )
 
         if not user.voice or not user.voice.channel:
             return await interaction.response.send_message(
-                "❌ Join a voice channel first", ephemeral=True
+                "❌ **Join a voice channel first**",
+                ephemeral=True
             )
 
         if str(user.id) in data.get("active_vcs", {}):
             return await interaction.response.send_message(
-                "❌ You already own a private VC", ephemeral=True
+                "❌ **You already own a private VC**",
+                ephemeral=True
             )
 
-        base = user.voice.channel
+        base_vc = user.voice.channel
+        members = base_vc.members
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -125,12 +143,12 @@ class PrivateVC(commands.Cog):
         }
 
         vc = await guild.create_voice_channel(
-            name=f"{user.name}'s VC",
-            category=base.category,
+            name=f"{user.name}'s Private VC",
+            category=base_vc.category,
             overwrites=overwrites
         )
 
-        for m in base.members:
+        for m in members:
             await m.move_to(vc)
 
         privatevc_col.update_one(
@@ -139,35 +157,113 @@ class PrivateVC(commands.Cog):
                 "$set": {
                     f"active_vcs.{user.id}": {
                         "channel_id": vc.id,
-                        "owner_id": user.id
+                        "owner_id": user.id,
+                        "allowed_users": []
                     }
                 }
             }
         )
 
         await interaction.response.send_message(
-            f"✅ VC created: **{vc.name}**", ephemeral=True
+            "✅ **Private VC created successfully**\n\n"
+            f"🔊 **Channel:** {vc.name}",
+            ephemeral=True
+        )
+
+    # ================== /privatevc allow ==================
+    @privatevc.command(
+        name="allow",
+        description="Allow a user to join your private VC"
+    )
+    async def allow_user(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member
+    ):
+        data = privatevc_col.find_one({"guild_id": interaction.guild.id})
+        vc_data = data.get("active_vcs", {}).get(str(interaction.user.id))
+
+        if not vc_data:
+            return await interaction.response.send_message(
+                "❌ **You do not own a private VC**",
+                ephemeral=True
+            )
+
+        vc = interaction.guild.get_channel(vc_data["channel_id"])
+        if vc:
+            await vc.set_permissions(
+                user,
+                view_channel=True,
+                connect=True,
+                speak=True
+            )
+
+        privatevc_col.update_one(
+            {"guild_id": interaction.guild.id},
+            {
+                "$addToSet": {
+                    f"active_vcs.{interaction.user.id}.allowed_users": user.id
+                }
+            }
+        )
+
+        await interaction.response.send_message(
+            "✅ **User allowed**\n\n"
+            f"👤 {user.mention} can now join your VC.",
+            ephemeral=True
+        )
+
+    # ================== /privatevc remove ==================
+    @privatevc.command(
+        name="remove",
+        description="Remove a user from your private VC"
+    )
+    async def remove_user(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member
+    ):
+        data = privatevc_col.find_one({"guild_id": interaction.guild.id})
+        vc_data = data.get("active_vcs", {}).get(str(interaction.user.id))
+
+        if not vc_data:
+            return await interaction.response.send_message(
+                "❌ **You do not own a private VC**",
+                ephemeral=True
+            )
+
+        vc = interaction.guild.get_channel(vc_data["channel_id"])
+        if vc:
+            if user.voice and user.voice.channel == vc:
+                await user.move_to(None)
+            await vc.set_permissions(
+                user,
+                view_channel=False,
+                connect=False
+            )
+
+        await interaction.response.send_message(
+            "🚫 **User removed from your private VC**",
+            ephemeral=True
         )
 
     # ================== AUTO DELETE ==================
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        if not before.channel:
-            return
+        if before.channel and before.channel != after.channel:
+            data = privatevc_col.find_one({"guild_id": member.guild.id})
+            vc_data = data.get("active_vcs", {}).get(str(member.id))
 
-        data = privatevc_col.find_one({"guild_id": member.guild.id})
-        if not data:
-            return
+            if vc_data and before.channel.id == vc_data["channel_id"]:
+                for m in before.channel.members:
+                    await m.move_to(None)
 
-        for owner_id, vc_data in data.get("active_vcs", {}).items():
-            if before.channel.id == vc_data["channel_id"]:
-                if len(before.channel.members) == 0:
-                    await before.channel.delete()
-                    privatevc_col.update_one(
-                        {"guild_id": member.guild.id},
-                        {"$unset": {f"active_vcs.{owner_id}": ""}}
-                    )
-                break
+                await before.channel.delete()
+
+                privatevc_col.update_one(
+                    {"guild_id": member.guild.id},
+                    {"$unset": {f"active_vcs.{member.id}": ""}}
+                )
 
 
 async def setup(bot: commands.Bot):

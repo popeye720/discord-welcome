@@ -4,81 +4,91 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 
-
 from database.models import ai_config_col, ai_memory_col, system_prompt_col
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are Tejas, a confident, charming and playful Indian Discord AI bot. "
-    "You speak in natural Hinglish and english with a friendly, mature tone."
+FORBIDDEN_NAMES = ["nilesh", "nilu", "nilkesh"]
+
+FORBIDDEN_REPLY = (
+    "Nilesh is my developer. "
+    "I cannot comment on, discuss, or store any personal information about him."
 )
 
-
-
-
+DEFAULT_SYSTEM_PROMPT = (
+    "You are Tejas, a confident, charming and playful Indian Discord AI bot. "
+)
 
 AI_MODEL = "llama-3.1-8b-instant"
-AI_TEMP = 0.7
+AI_TEMP = 0.3
 AI_MAX_TOKENS = 300
 MAX_HISTORY = 10
 
-GROQ_API_KEY = os.getenv("GROK_AI_TOKNE")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 
 class AIChat(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # --------------------------------------------------
-    # PERMISSION CHECK
-    # --------------------------------------------------
     async def is_admin_or_owner(self, interaction: discord.Interaction) -> bool:
         guild = interaction.guild
         if not guild:
             return False
-        if interaction.user.id == guild.owner_id:
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        return False
+        return (
+            interaction.user.id == guild.owner_id
+            or interaction.user.guild_permissions.administrator
+        )
 
-    # --------------------------------------------------
-    # AI CORE (FIXED, SAME LOGIC)
-    # --------------------------------------------------
     async def ask_ai(self, guild_id: int, user_id: int, prompt: str) -> str:
-        doc = ai_memory_col.find_one(
+        # 🔒 HARD BLOCK
+        if any(name in prompt.lower() for name in FORBIDDEN_NAMES):
+            return FORBIDDEN_REPLY
+
+        # ---------- MEMORY ----------
+        mem_doc = ai_memory_col.find_one(
             {"guild_id": guild_id, "user_id": user_id}
         ) or {}
 
-        history = doc.get("history", [])
+        history = mem_doc.get("history", [])
+        if not isinstance(history, list):
+            history = []
 
-        prompt_doc = system_prompt_col.find_one({"_id": "default"})
-        system_prompt = (
-            prompt_doc.get("content")
-            if prompt_doc and prompt_doc.get("content")
-            else DEFAULT_SYSTEM_PROMPT
-            )
+        # ---------- SYSTEM PROMPT ----------
+        sp_doc = system_prompt_col.find_one({"_id": "default"}) or {}
+        system_prompt = sp_doc.get("content") or DEFAULT_SYSTEM_PROMPT
+
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history)
         messages.append({"role": "user", "content": prompt})
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {GROQ_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": AI_MODEL,
-                    "messages": messages,
-                    "temperature": AI_TEMP,
-                    "max_tokens": AI_MAX_TOKENS
-                }
-            ) as resp:
-                data = await resp.json()
-                reply = data["choices"][0]["message"]["content"]
+        # ---------- API CALL ----------
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": AI_MODEL,
+                        "messages": messages,
+                        "temperature": AI_TEMP,
+                        "max_tokens": AI_MAX_TOKENS
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as resp:
+                    data = await resp.json()
 
+            if "choices" not in data:
+                return "⚠️ AI is busy right now, please try again."
+
+            reply = data["choices"][0]["message"]["content"]
+
+        except Exception:
+            return "⚠️ Something went wrong with AI. Try again later."
+
+        # ---------- SAVE MEMORY ----------
         history.append({"role": "user", "content": prompt})
         history.append({"role": "assistant", "content": reply})
 
@@ -90,15 +100,8 @@ class AIChat(commands.Cog):
 
         return reply
 
-    # --------------------------------------------------
-    # /on-ai (ADMIN)
-    # --------------------------------------------------
     @app_commands.command(name="on-ai", description="Enable AI in a channel")
-    async def on_ai(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.TextChannel
-    ):
+    async def on_ai(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await self.is_admin_or_owner(interaction):
             return await interaction.response.send_message(
                 "❌ Only **Admin or Owner** can use this command.",
@@ -116,9 +119,6 @@ class AIChat(commands.Cog):
             ephemeral=True
         )
 
-    # --------------------------------------------------
-    # /off-ai (ADMIN)
-    # --------------------------------------------------
     @app_commands.command(name="off-ai", description="Disable AI")
     async def off_ai(self, interaction: discord.Interaction):
         if not await self.is_admin_or_owner(interaction):
@@ -134,74 +134,21 @@ class AIChat(commands.Cog):
             ephemeral=True
         )
 
-    # --------------------------------------------------
-    # /clear-ai-memory (ADMIN)
-    # --------------------------------------------------
-    @app_commands.command(
-        name="clear-ai-memory",
-        description="Clear ALL AI memory (admin only)"
-    )
-    async def clear_ai_memory(self, interaction: discord.Interaction):
-        if not await self.is_admin_or_owner(interaction):
-            return await interaction.response.send_message(
-                "❌ Only **Admin or Owner** can use this command.",
-                ephemeral=True
-            )
-
-        ai_memory_col.delete_many({"guild_id": interaction.guild.id})
-        await interaction.response.send_message(
-            "🧹 **All AI memory cleared**",
-            ephemeral=True
-        )
-
-    # --------------------------------------------------
-    # /clear-my-ai-memory (ANY USER)
-    # --------------------------------------------------
-    @app_commands.command(
-        name="clear-my-ai-memory",
-        description="Clear your own AI memory"
-    )
-    async def clear_my_ai_memory(self, interaction: discord.Interaction):
-        config = ai_config_col.find_one({"guild_id": interaction.guild.id})
-        if not config or config.get("channel_id") != interaction.channel_id:
-            return await interaction.response.send_message(
-                "⚠️ This command can only be used in **AI enabled channel**.",
-                ephemeral=True
-            )
-
-        ai_memory_col.delete_one({
-            "guild_id": interaction.guild.id,
-            "user_id": interaction.user.id
-        })
-
-        await interaction.response.send_message(
-            "🧹 **Your AI memory has been cleared**",
-            ephemeral=True
-        )
-
-    # --------------------------------------------------
-    # MESSAGE LISTENER
-    # --------------------------------------------------
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
             return
 
         config = ai_config_col.find_one(
-            {"guild_id": message.guild.id},
-            {"channel_id": 1}
-        )
+            {"guild_id": message.guild.id}
+        ) or {}
 
-        if not config or message.channel.id != config.get("channel_id"):
+        if message.channel.id != config.get("channel_id"):
             return
 
         prompt = message.content or ""
-
-        # IMAGE SUPPORT
-        if message.attachments:
-            for a in message.attachments:
-                if a.content_type and a.content_type.startswith("image"):
-                    prompt += f"\n[User shared an image: {a.url}]"
+        if not prompt.strip():
+            return  # 👈 empty message ignore
 
         async with message.channel.typing():
             reply = await self.ask_ai(
@@ -212,8 +159,5 @@ class AIChat(commands.Cog):
             await message.reply(f"{message.author.mention} {reply}")
 
 
-# --------------------------------------------------
-# SETUP
-# --------------------------------------------------
 async def setup(bot: commands.Bot):
     await bot.add_cog(AIChat(bot))

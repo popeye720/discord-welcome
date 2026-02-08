@@ -15,7 +15,7 @@ FORBIDDEN_REPLY = (
 )
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are Tejas, a confident, charming and playful Indian Discord AI bot. "
+    "You are TEJAS, an expert AI that deeply analyzes each question and provides the most accurate, concise, and logically sound answer."
 )
 
 AI_MODEL = "llama-3.1-8b-instant"

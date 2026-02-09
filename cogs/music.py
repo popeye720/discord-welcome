@@ -426,15 +426,13 @@ class Music(commands.Cog):
                 st.panel_message_id = None
                 return
 
-            try:
-                track = await asyncio.wait_for(st.queue.get(), timeout=2.0)
-            except asyncio.TimeoutError:
-                continue
+            track = await st.queue.get()
 
             while True:
                 st.current = track
                 try:
                     await player.play(track.playable)
+                    await asyncio.sleep(0.1)
                 except Exception as e:
                     print("❌ player.play failed:", e)
                     traceback.print_exc()

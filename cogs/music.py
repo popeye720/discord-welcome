@@ -53,6 +53,9 @@ class GuildMusicState:
         self.queue: asyncio.Queue[Track] = asyncio.Queue()
         self.current: Optional[Track] = None
 
+        # ✅ only 8D filter remains
+        self.eightd_enabled: bool = False
+
         # ✅ loop current song
         self.loop_enabled: bool = False
 
@@ -123,6 +126,10 @@ class MusicPanelView(discord.ui.View):
     @discord.ui.button(label="⏹️ Stop", style=discord.ButtonStyle.secondary, custom_id="music_stop")
     async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.cog._btn_stop(interaction)
+
+    @discord.ui.button(label="♾️ 8D", style=discord.ButtonStyle.secondary, custom_id="music_8d")
+    async def btn_8d(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.cog._btn_8d(interaction)
 
     @discord.ui.button(label="🔁 Loop", style=discord.ButtonStyle.secondary, custom_id="music_loop")
     async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -243,6 +250,25 @@ class Music(commands.Cog):
 
         return True
 
+    # ---------- filters (ONLY 8D) ----------
+    async def apply_filters(self, guild: discord.Guild):
+        st = self.get_state(guild.id)
+        player = self.get_player(guild)
+        if not player or not getattr(player, "connected", False):
+            return
+
+        filters = wavelink.Filters()
+        if st.eightd_enabled:
+            try:
+                # Fixed for Wavelink 3.x
+                filters.rotation = wavelink.Rotation(rotation_hz=0.08)
+            except:
+                pass
+
+        try:
+            await player.set_filters(filters)
+        except Exception as e:
+            print("❌ set_filters failed:", e)
 
     # ---------- embeds ----------
     def _base_embed(self, guild: discord.Guild) -> discord.Embed:
@@ -277,6 +303,8 @@ class Music(commands.Cog):
         embed.add_field(name="Requested By", value=f"<@{t.requester_id}>", inline=True)
         embed.add_field(name="Duration", value=format_duration_ms(t.duration_ms), inline=True)
         embed.add_field(name="Author", value=t.author or "Unknown", inline=True)
+
+        embed.add_field(name="8D", value="On" if st.eightd_enabled else "Off", inline=True)
         embed.add_field(name="Loop", value="On" if getattr(st, "loop_enabled", False) else "Off", inline=True)
         embed.add_field(name="Queue", value=f"{st.queue.qsize()} track(s)" if not st.queue.empty() else "(empty)", inline=True)
 
@@ -421,6 +449,7 @@ class Music(commands.Cog):
                     break
 
                 await asyncio.sleep(0.25)
+                await self.apply_filters(guild)
 
                 try:
                     await self.refresh_panel(guild, keep_buttons=True)
@@ -589,14 +618,32 @@ class Music(commands.Cog):
                 break
         st.current = None
 
-        
+        msg = await self.get_panel_message(guild)
+        if msg:
+            try:
+                await msg.edit(embed=self.build_queue_ended_embed(guild), view=None)
+            except:
+                pass
         st.panel_channel_id = None
         st.panel_message_id = None
 
-        ch = guild.get_channel(st.last_play_text_channel_id) if st.last_play_text_channel_id else None
-        if isinstance(ch, discord.TextChannel):
-            await ch.send(embed=self.build_queue_ended_embed(guild))
-#---------------------------------------------
+        await interaction.followup.send("⏹️ Stopped.", ephemeral=True)
+
+    async def _btn_8d(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        if not guild:
+            return
+
+        self._hit_cooldown(guild.id)
+
+        st = self.get_state(guild.id)
+        st.eightd_enabled = not st.eightd_enabled
+        await self.apply_filters(guild)
+
+        await interaction.followup.send(f"♾️ 8D: {'On' if st.eightd_enabled else 'Off'}", ephemeral=True)
+        await self.refresh_panel(guild, keep_buttons=True)
+
     async def _btn_loop(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild

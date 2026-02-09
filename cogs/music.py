@@ -618,16 +618,14 @@ class Music(commands.Cog):
                 break
         st.current = None
 
-        msg = await self.get_panel_message(guild)
-        if msg:
-            try:
-                await msg.edit(embed=self.build_queue_ended_embed(guild), view=None)
-            except:
-                pass
+        
         st.panel_channel_id = None
         st.panel_message_id = None
 
-        await interaction.followup.send("⏹️ Stopped.", ephemeral=True)
+        ch = guild.get_channel(st.last_play_text_channel_id)
+        if isinstance(ch, discord.TextChannel):
+            await ch.send(embed=self.build_queue_ended_embed(guild))
+            
 
     async def _btn_8d(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

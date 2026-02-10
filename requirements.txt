@@ -1,7 +1,6 @@
 discord.py==2.4.0
 pymongo==4.6
 dnspython>=2.4
-wavelink==3.4.1
 pytchat
 python-dotenv
 pytz

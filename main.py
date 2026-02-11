@@ -108,17 +108,6 @@ async def main():
         await bot.load_extension("cogs.ai_chat")
         await bot.load_extension("cogs.color_generator")
 
-        LL_URI = (os.getenv("LAVALINK_URI") or "").strip()
-        LL_PASS = (os.getenv("LAVALINK_PASSWORD") or "").strip()
-
-        if LL_URI and LL_PASS:
-            try:
-                await bot.load_extension("cogs.music")
-                print("✅ Music cog loaded")
-            except Exception as e:
-                print("❌ Music cog failed to load (skipping):", e)
-        else:
-            print("⚠️ Music cog skipped: LAVALINK_URI / LAVALINK_PASSWORD not set")
 
         await bot.start(TOKEN)
 

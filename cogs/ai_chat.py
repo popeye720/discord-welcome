@@ -18,11 +18,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "You are TEJAS, an expert AI that deeply analyzes each question and provides the most accurate, concise, and logically sound answer."
 )
 
-AI_MODEL = "gpt-oss-120b"
-AI_TEMP = 0.6
-AI_MAX_TOKENS = 400  # ✅ split ke baad badha sakte ho
-MAX_HISTORY = 10
 
+AI_MODEL = "llama-3.1-8b-instant" 
+AI_TEMP = 0.55 
+AI_MAX_TOKENS = 400 # ✅ split ke baad badha sakte ho MAX_HISTORY = 10
+MAX_HISTORY = 10
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 

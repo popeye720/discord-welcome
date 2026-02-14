@@ -57,7 +57,7 @@ class JoinToCreate(commands.Cog):
 
     # ---------------- CREATE JTC ----------------
     @app_commands.command(
-        name="createjtc",
+        name="create-jointocreate",
         description="Create Join-to-Create in current channel category"
     )
     async def create_jtc(self, interaction: discord.Interaction):
@@ -99,7 +99,7 @@ class JoinToCreate(commands.Cog):
 
     # ---------------- DELETE JTC ----------------
     @app_commands.command(
-        name="deletejtc",
+        name="del-jointocreate",
         description="Delete Join-to-Create system"
     )
     async def delete_jtc(self, interaction: discord.Interaction):

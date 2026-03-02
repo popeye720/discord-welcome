@@ -106,7 +106,7 @@ async def main():
         await bot.load_extension("cogs.autoping")
         await bot.load_extension("cogs.dm_forward")
         await bot.load_extension("cogs.ai_chat")
-        await bot.load_extension("cogs.color_generator")
+        await bot.load_extension("cogs.color_generator")   
 
 
         await bot.start(TOKEN)

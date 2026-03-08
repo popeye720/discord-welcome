@@ -65,6 +65,29 @@ async def on_ready():
     except Exception as e:
         print("❌ Modal persistent register error:", e)
 
+    try:
+        from cogs.solarinfo import SolarInfoPanelView
+        from database.models import solarinfo_col
+
+        count = 0
+        for panel in solarinfo_col.find({}):
+            message_id = panel.get("message_id")
+
+            if message_id:
+                try:
+                    bot.add_view(
+                        SolarInfoPanelView(),
+                        message_id=int(message_id)
+                    )
+                    count += 1
+                except Exception as e:
+                    print("Solar panel view bind failed:", e)
+
+        print(f"✅ Solar persistent views registered: {count}")
+
+    except Exception as e:
+        print("❌ Solar persistent register error:", e)
+
 
 @bot.event
 async def on_guild_join(guild):
@@ -106,7 +129,7 @@ async def main():
         await bot.load_extension("cogs.autoping")
         await bot.load_extension("cogs.dm_forward")
         await bot.load_extension("cogs.ai_chat")
-        await bot.load_extension("cogs.color_generator")   
+        await bot.load_extension("cogs.color_generator")
         await bot.load_extension("cogs.solarinfo")
 
         await bot.start(TOKEN)

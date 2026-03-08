@@ -380,7 +380,6 @@ class SolarInfoPanelView(discord.ui.View):
 class SolarInfo(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.bot.add_view(SolarInfoPanelView())
 
     @app_commands.command(
         name="solarinfo",

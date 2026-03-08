@@ -1,3 +1,4 @@
+import math
 import re
 from datetime import datetime, timezone
 from typing import Optional, Tuple
@@ -83,6 +84,30 @@ def _parse_capacity_to_kw(raw: str) -> Tuple[Optional[float], Optional[str]]:
     return kw, None
 
 
+def _parse_panel_size_to_watt(raw: str) -> Tuple[Optional[float], Optional[str]]:
+    """
+    Supports:
+    550W, 540 W, 0.55kW, 0.54 kW
+    Returns: (panel_watt, error_message)
+    """
+    if not raw or not raw.strip():
+        return None, None
+
+    text = raw.strip().lower().replace(",", "")
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(w|kw)", text)
+
+    if not match:
+        return None, "❌ Invalid panel size format. Examples: `550W`, `540W`, `0.55kW`"
+
+    value = float(match.group(1))
+    unit = match.group(2)
+
+    if unit == "kw":
+        return value * 1000, None
+
+    return value, None
+
+
 def _build_panel_embed() -> discord.Embed:
     embed = create_embed(
         title="☀️ Solar Info Panel",
@@ -93,7 +118,7 @@ def _build_panel_embed() -> discord.Embed:
             "• Per Day Generation Unit\n\n"
             "**Optional details:**\n"
             "• Grid Buying Price (INR)\n"
-            "• System Type\n"
+            "• Panel Size\n"
             "• Location / Notes"
         )
     )
@@ -103,11 +128,17 @@ def _build_panel_embed() -> discord.Embed:
         inline=False
     )
     embed.add_field(
+        name="📌 Supported Panel Size Formats",
+        value="`550W` • `540W` • `600W` • `0.55kW`",
+        inline=False
+    )
+    embed.add_field(
         name="📌 Example",
         value=(
             "**Solar Capacity:** `1MW`\n"
             "**Per Day Generation Unit:** `4.5`\n"
-            "**Grid Buying Price:** `3.5`"
+            "**Grid Buying Price:** `3.5`\n"
+            "**Panel Size:** `550W`"
         ),
         inline=False
     )
@@ -121,7 +152,7 @@ def _build_result_embed(
     capacity_kw: float,
     unit_per_kw_per_day: float,
     buy_price: Optional[float],
-    system_type: Optional[str],
+    panel_size_watt: Optional[float],
     location_notes: Optional[str]
 ) -> discord.Embed:
     per_day_generation = capacity_kw * unit_per_kw_per_day
@@ -142,9 +173,6 @@ def _build_result_embed(
     if buy_price is not None:
         plant_info += f"\n**Grid Buying Price:** `{_format_inr(buy_price)} / unit`"
 
-    if system_type:
-        plant_info += f"\n**System Type:** `{system_type}`"
-
     if location_notes:
         plant_info += f"\n**Location / Notes:** `{location_notes}`"
 
@@ -153,6 +181,20 @@ def _build_result_embed(
         value=plant_info,
         inline=False
     )
+
+    if panel_size_watt is not None and panel_size_watt > 0:
+        total_panels = math.ceil((capacity_kw * 1000) / panel_size_watt)
+
+        infra_text = (
+            f"**Panel Size:** `{_format_number(panel_size_watt)}W`\n"
+            f"**Total Panels:** `{_format_number(total_panels)}`"
+        )
+
+        embed.add_field(
+            name="🔧 Solar Infrastructure",
+            value=infra_text,
+            inline=False
+        )
 
     day_text = f"**Generation:** {_format_units(per_day_generation)}"
     month_text = f"**Generation:** {_format_units(per_month_generation)}"
@@ -212,11 +254,11 @@ class SolarInfoModal(discord.ui.Modal, title="Solar Plant Details"):
             max_length=20
         )
 
-        self.system_type = discord.ui.TextInput(
-            label="4) System Type - Optional",
-            placeholder="Example: On-grid / Off-grid / Hybrid",
+        self.panel_size = discord.ui.TextInput(
+            label="4) Panel Size - Optional",
+            placeholder="Example: 550W / 540W / 0.55kW",
             required=False,
-            max_length=50
+            max_length=20
         )
 
         self.location_notes = discord.ui.TextInput(
@@ -230,7 +272,7 @@ class SolarInfoModal(discord.ui.Modal, title="Solar Plant Details"):
         self.add_item(self.solar_capacity)
         self.add_item(self.per_day_generation)
         self.add_item(self.grid_buying_price)
-        self.add_item(self.system_type)
+        self.add_item(self.panel_size)
         self.add_item(self.location_notes)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -261,7 +303,21 @@ class SolarInfoModal(discord.ui.Modal, title="Solar Plant Details"):
                     ephemeral=True
                 )
 
-        system_type = self.system_type.value.strip() if self.system_type.value else None
+        panel_size_watt = None
+        if self.panel_size.value and self.panel_size.value.strip():
+            panel_size_watt, panel_size_error = _parse_panel_size_to_watt(self.panel_size.value)
+            if panel_size_error:
+                return await interaction.response.send_message(
+                    panel_size_error,
+                    ephemeral=True
+                )
+
+            if panel_size_watt is not None and panel_size_watt <= 0:
+                return await interaction.response.send_message(
+                    "❌ Panel size must be greater than 0.",
+                    ephemeral=True
+                )
+
         location_notes = self.location_notes.value.strip() if self.location_notes.value else None
 
         result_embed = _build_result_embed(
@@ -270,7 +326,7 @@ class SolarInfoModal(discord.ui.Modal, title="Solar Plant Details"):
             capacity_kw=capacity_kw,
             unit_per_kw_per_day=per_day_unit,
             buy_price=buy_price,
-            system_type=system_type,
+            panel_size_watt=panel_size_watt,
             location_notes=location_notes
         )
 

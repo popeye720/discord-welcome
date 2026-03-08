@@ -91,3 +91,6 @@ system_prompt_col = db["system_prompt"]
 
 color_col = db["color_generator"]
 color_col.create_index("guild_id", unique=True)
+
+solarinfo_col = db["solarinfo"]
+solarinfo_col.create_index("guild_id", unique=True)

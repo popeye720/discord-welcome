@@ -6,6 +6,7 @@ from datetime import datetime
 from database.models import freegames_col
 import asyncio
 import time
+from utils.embed_color import create_embed
 
 CLEANUP_AFTER_SECONDS = 60 * 60 * 24 * 7  # 7 DAYS
 
@@ -188,7 +189,7 @@ class FreeGames(commands.Cog):
                 if game["id"] in posted_ids:
                     continue
 
-                embed = discord.Embed(title="🎮 FREE GAME ALERT", color=0x00FFCC)
+                embed = create_embed(title="🎮 FREE GAME ALERT")
                 embed.add_field(name="Game", value=game["title"], inline=False)
                 embed.add_field(name="Platform", value=game["platform"], inline=False)
                 embed.add_field(name="Free Till", value=game["free_till"], inline=False)

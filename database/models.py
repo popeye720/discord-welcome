@@ -76,16 +76,6 @@ feedback_col = db["feedbacks"]
 
 
 
-ai_config_col = db["ai_config"]
-ai_config_col.create_index("guild_id", unique=True)
-
-ai_memory_col = db["ai_memory"]
-ai_memory_col.create_index(
-    [("guild_id", 1), ("user_id", 1)],
-    unique=True
-)
-
-
 system_prompt_col = db["system_prompt"]
 
 

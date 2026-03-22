@@ -113,7 +113,6 @@ async def main():
         await bot.load_extension("cogs.dm_forward")
         await bot.load_extension("cogs.solarinfo")
         await bot.load_extension("cogs.autoping")
-        await bot.load_extension("cogs.reactionRole")
         await bot.start(TOKEN)
 
 
